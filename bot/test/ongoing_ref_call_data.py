@@ -11,13 +11,13 @@ intents = discord.Intents.default()
 intents.messages = True  # Necessary to read messages
 intents.message_content = True  # Necessary to access message content
 
-# Create a new discord bot client with intents
+# Create new discord bot client with intents
 client = discord.Client(intents=intents)
 
-# Load the .env file
+# Load .env file
 load_dotenv()
 
-# Get the DISCORD_TOKEN from the environment
+# Get DISCORD_TOKEN from environment
 discord_token = os.getenv('DISCORD_TOKEN')
 
 class MaterializedChainState:
@@ -87,38 +87,8 @@ class MaterializedChainState:
             raise ref_caller_error
 
 
-def get_asset_price(asset_id, currencies='usd'):
-    """
-    Fetches the price of an asset in the specified currencies from the CoinGecko API.
-
-    Args:
-        asset_id (str): The ID of the asset for which to fetch the price (e.g., "polkadot").
-        currencies (str, optional): A comma-separated string of currency symbols
-                                     (default is 'usd,gbp,eur').
-
-    Returns:
-        dict: A dictionary containing the prices in the specified currencies, or None
-              if an error occurred or the asset ID was not found.
-    """
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={asset_id}&vs_currencies={currencies}"
-
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-    except requests.exceptions.HTTPError as e:
-        print(f"An HTTP error occurred: {e}")
-        return 0
-    except requests.exceptions.RequestException as e:
-        print(f"A request error occurred: {e}")
-        return 0
-
-    data = response.json()
-
-    if asset_id not in data:
-        print(f"Asset ID '{asset_id}' not found in CoinGecko.")
-        return 0
-
-    return data[asset_id]['usd']
+# Import centralized price utility function instead of using a local implementation
+from bot.utils.price_utils import get_asset_price_v2
 
 
 class ProcessCallData:
@@ -291,7 +261,7 @@ async def on_message(message):
 
     if message.content.startswith('!ref_caller'):
         index = message.content.split()[1]
-        price = get_asset_price(asset_id='polkadot')
+        price = get_asset_price_v2(asset_id='polkadot')
 
         chainstate = MaterializedChainState()
 
