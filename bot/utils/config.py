@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
-from utils.logger import Logger
-from utils.string_utils import strtobool
+from bot.utils.logger import Logger
+from bot.utils.string_utils import strtobool
 import os
 import json
 

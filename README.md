@@ -240,6 +240,8 @@ npm install pm2 -g
 ```
 
 #### Daemonizing the Bot to Run 24/7 with PM2
+
+##### Single-Network Bot (Legacy)
 ```shell
 # change directory
 cd opengov-bot/bot/
@@ -255,31 +257,200 @@ pm2 save
 pm2 stop polkadot_gov
 pm2 start polkadot_gov
 pm2 restart polkadot_gov
+```
 
-# list process(s); App name, ID, Mode, Status, CPU, Memory, Uptime, Restarts
+##### Multi-Network Bot (Recommended)
+```shell
+# ensure networks.json file is in place
+mkdir -p ../data
+cp utils/samples/networks.json ../data/
+
+# test before daemonizing
+python3 main_multi_network.py
+
+# daemonize
+pm2 start main_multi_network.py --name opengov_multi --interpreter python3
+pm2 save
+
+# stopping/starting & restarting pm2 process
+pm2 stop opengov_multi
+pm2 start opengov_multi
+pm2 restart opengov_multi
+```
+
+##### PM2 Management Commands
+```shell
+# list process(s)
 pm2 list
+
+# view logs
+pm2 logs opengov_multi
+
+# monitor processes
+pm2 monit
 ```
 
 ### Running Docker Version
 
+The repository contains several Docker-related files:
+- `Dockerfile` - Original Dockerfile (uses main.py for single-network)
+- `docker-compose.yaml` - Original Docker Compose file
+- `Dockerfile.single` - Specialized for single-network operation
+- `Dockerfile.multi` - Specialized for multi-network operation
+- `docker-compose.single.yaml` - Compose file for single-network
+- `docker-compose.multi.yaml` - Compose file for multi-network
+
+#### Single-Network Docker (Legacy)
+
 ```shell
-# Build the image
-docker build -t internal-gov-2 .
+# Build the image using the dedicated single-network Dockerfile
+docker build -t internal-gov-2-single -f Dockerfile.single .
 
 # Create volume for data
 docker volume create internal-gov-2-data
 
-# Run (+ restart) and mount data volume
+# Run with volume mount
 docker run -d \
-  --name internal-gov-2 \
+  --name internal-gov-2-single \
   --mount source=internal-gov-2-data,target=/app/data \
+  --mount type=bind,source=$(pwd)/.env,target=/app/.env \
   --restart always \
-  internal-gov-2
+  internal-gov-2-single
 
-  docker run -d   --name internal-gov-2   -v ./data:/app/data   -v ./.env:/app/.env   --restart always   internal-gov-2
+# Alternative with bind mounts
+docker run -d \
+  --name internal-gov-2-single \
+  -v ./data:/app/data \
+  -v ./.env:/app/.env \
+  --restart always \
+  internal-gov-2-single
 
-# Copy .env file
-docker cp .env internal-gov-2:/app/
+# Copy .env file if needed
+docker cp .env internal-gov-2-single:/app/
+```
+
+Or using docker-compose with the dedicated single-network compose file:
+
+```shell
+# Use the single-network docker-compose file
+docker-compose -f docker-compose.single.yaml up -d
+```
+
+#### Multi-Network Docker
+
+Multi-network version requires a network configuration file networks.json.
+
+1. Prepare networks.json configuration:
+
+```shell
+# Create networks.json in data directory
+mkdir -p data
+cp bot/utils/samples/networks.json data/
+```
+
+2. Use dedicated multi-network Dockerfile `Dockerfile.multi`:
+
+```shell
+# Build multi-network image
+docker build -t internal-gov-2-multi -f Dockerfile.multi .
+
+# Run with data volume
+docker run -d \
+  --name internal-gov-2-multi \
+  -v ./data:/app/data \
+  -v ./.env:/app/.env \
+  --restart always \
+  internal-gov-2-multi
+```
+
+3. Or use docker-compose with the multi-network compose file `docker-compose.multi.yaml`.
+
+```shell
+# Use the multi-network docker-compose file
+docker-compose -f docker-compose.multi.yaml up -d
+```
+
+Multi-network Docker setup includes:
+- Pre-configured entry point for multi-network support
+- Volume mounts for persistent data and network configuration
+- Integration with database services
+
+---
+
+## Multi-Network Support
+
+Bot now supports monitoring multiple blockchain networks (like Polkadot and Kusama) simultaneously within a single running instance. Eliminates the need to run separate bot instances for each network.
+
+### Key Features
+
+- **Dynamic Network Management**: Add, remove, or update networks at runtime without restarting the bot
+- **Parallel Processing**: Fetch and process referenda from all enabled networks simultaneously
+- **Network-Specific Tags**: Discord threads are tagged with network names for clear identification
+- **Segregated Vote Tracking**: Votes are tracked separately for each network
+
+### Migration from Single-Network to Multi-Network
+
+If upgrading from a previous version that only supported a single network at a time, follow these steps to migrate:
+
+1. **Backup Data**
+   ```bash
+   # Create backups of data files
+   cp data/vote_counts.json data/vote_counts.json.backup
+   cp data/archived_votes.json data/archived_votes.json.backup
+   ```
+
+2. **Create Networks Configuration File**
+   ```bash
+   # Create networks.json file in data directory
+   mkdir -p data
+   cp bot/utils/samples/networks.json data/
+   ```
+
+3. **Migrate Existing Vote Data**
+   ```bash
+   # Run migration script to convert vote data to multi-network format
+   # You MUST specify which network ID your existing data belongs to
+   cd bot
+   python utils/migrate_to_multi_network.py --network-id polkadot
+
+   # If bot was monitoring Kusama instead of Polkadot:
+   python utils/migrate_to_multi_network.py --network-id kusama
+   ```
+
+4. **Update PM2 Configuration**
+   ```bash
+   # Stop existing bot instance
+   pm2 stop polkadot_gov
+
+   # Start new multi-network version
+   pm2 start main_multi_network.py --name opengov_multi_net --interpreter python3
+   pm2 save
+   ```
+
+### Adding New Networks
+
+Once multi-network bot is running, add new networks using Discord slash commands:
+
+1. **Using Discord Command (Recommended)**
+   - Use `/network add` command in Discord
+   - Provide network_id, network_name, substrate_wss, symbol, and token_decimal
+   - Only users with admin role can add networks
+
+2. **Manually Editing Configuration**
+   - Edit `data/networks.json` file
+   - Add new network configuration
+   - Bot will detect file changes and reload automatically
+
+### Running Multi-Network Bot
+
+```bash
+# Test before daemonizing
+cd opengov-bot/bot/
+python3 main_multi_network.py
+
+# Daemonize with PM2
+pm2 start main_multi_network.py --name opengov_multi_net --interpreter python3
+pm2 save
 ```
 
 ---

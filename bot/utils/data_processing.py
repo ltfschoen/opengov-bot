@@ -11,8 +11,8 @@ import markdownify
 from PIL import Image
 from typing import Dict, Any
 from datetime import datetime
-from utils.config import Config
-from utils.logger import Logger
+from bot.utils.config import Config
+from bot.utils.logger import Logger
 
 
 class Text:

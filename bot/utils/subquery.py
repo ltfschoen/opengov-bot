@@ -3,7 +3,7 @@ import json
 import time
 import random
 import asyncio
-from utils.logger import Logger
+from bot.utils.logger import Logger
 from scalecodec.base import ScaleBytes
 from substrateinterface import SubstrateInterface, Keypair
 from substrateinterface.exceptions import SubstrateRequestException, ConfigurationError

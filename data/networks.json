@@ -1,0 +1,20 @@
+{
+    "polkadot": {
+        "enabled": true,
+        "network_name": "polkadot",
+        "symbol": "DOT",
+        "token_decimal": 10,
+        "substrate_wss": "wss://rpc.polkadot.io",
+        "people_wss": null,
+        "forum_tags": []
+    },
+    "kusama": {
+        "enabled": true,
+        "network_name": "kusama",
+        "symbol": "KSM",
+        "token_decimal": 12,
+        "substrate_wss": "wss://kusama-rpc.polkadot.io",
+        "people_wss": null,
+        "forum_tags": []
+    }
+}
