@@ -15,7 +15,7 @@ from datetime import datetime
 
 
 def backup_file(file_path):
-    """Create a backup of a file with timestamp."""
+    """Create backup of a file with timestamp."""
     if not os.path.exists(file_path):
         print(f"File {file_path} does not exist. No backup created.")
         return False
@@ -91,7 +91,7 @@ def migrate_archived_votes(archived_votes_path, network_id="polkadot"):
     Returns:
         True if migration successful, False otherwise
     """
-    # Check if file exists - it's fine if it doesn't
+    # Check if file exists
     if not os.path.exists(archived_votes_path):
         print(f"Archived votes file {archived_votes_path} does not exist. Creating new file.")
         with open(archived_votes_path, 'w') as file:
@@ -112,7 +112,7 @@ def migrate_archived_votes(archived_votes_path, network_id="polkadot"):
                 print("Error: archived_votes.json is not valid JSON.")
                 return False
 
-        # Check if already migrated (has network IDs)
+        # Check if already migrated and has network IDs
         if network_id in archived_votes:
             print("Archived votes file appears to already be in multi-network format.")
             return True

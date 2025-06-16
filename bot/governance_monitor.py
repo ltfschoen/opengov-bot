@@ -38,50 +38,19 @@ class GovernanceMonitor(discord.Client):
 
     def get_asset_price_v2(self, asset_id, currencies='usd'):
         """
-        Fetches the price of an asset in the specified currencies from the CoinGecko API.
+        Fetches price of an asset in specified currencies.
+        Wrapper around centralized price_utils module.
 
         Args:
-            asset_id (str): The ID of the asset for which to fetch the price (e.g., "bitcoin").
-            currencies (str, optional): A comma-separated string of currency symbols
-                                         (default is 'usd').
+            asset_id (str): ID of asset for which to fetch the price (e.g., "polkadot").
+            currencies (str, optional): Comma-separated string of currency symbols
+                (default 'usd').
 
         Returns:
-            dict: A dictionary containing the prices in the specified currencies, or None
-                  if an error occurred or the asset ID was not found.
+            float: Price in specified currency or 0 if not found.
         """
-        url = f"https://api.coingecko.com/api/v3/simple/price?ids={asset_id}&vs_currencies={currencies}"
-        self.logger.info("Fetching price from CoinGecko")
-        retry_strategy = Retry(  # Retry strategy
-            total=3,             # Retry up to 3 times
-            backoff_factor=3,    # Wait 3 second between retries
-            raise_on_status=False,
-        )
-
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        http = requests.Session()
-        http.mount("https://", adapter)
-
-        try:
-            response = http.get(url)
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            self.logger.error(f"A HTTP error occurred: {e}")
-            return 0
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"A request error occurred: {e}")
-            return 0
-        except Exception as e:
-            self.logger.error(f"An error occurred whilst fetching the price from Coingecko: {e}")
-
-        data = response.json()
-
-        if asset_id not in data:
-            self.logger.warning(f"Asset ID '{asset_id}' not found in CoinGecko.")
-            return 0
-
-        price = data[asset_id].get('usd', 0)
-        self.logger.info(f"Price for '{asset_id}' is ${price}")
-        return price
+        from bot.utils.price_utils import get_asset_price_v2 as get_price
+        return get_price(asset_id)
 
     async def check_permissions(self, interaction, required_role, user_id, user_roles):
         self.logger.info(f"Checking {interaction.user.name} has the appropriate permissions")

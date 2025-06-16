@@ -19,11 +19,11 @@ class MultiNetworkGovernance:
     """
     def __init__(self, client, discord_format):
         """
-        Initialize the governance handler.
+        Initialize governance handler.
 
         Args:
-            client: The Discord client/bot instance
-            discord_format: The DiscordFormatting utility instance
+            client: Discord client/bot instance
+            discord_format: DiscordFormatting utility instance
         """
         self.client = client
         self.config = client.config
@@ -35,7 +35,7 @@ class MultiNetworkGovernance:
         self.handler = MultiNetworkHandler(self.network_manager)
 
     async def start(self):
-        """Start the network manager and initialize connections."""
+        """Start network manager and initialize connections."""
         await self.network_manager.start()
         await self.handler.initialize_connections()
 
@@ -54,7 +54,7 @@ class MultiNetworkGovernance:
             # Check all networks in parallel
             referendum_data = await self.handler.check_all_referendums()
 
-            # Get the guild
+            # Get guild
             guild = self.client.get_guild(self.config.DISCORD_SERVER_ID)
             if not guild:
                 self.logger.error(f"Guild not found with ID {self.config.DISCORD_SERVER_ID}")
@@ -126,10 +126,10 @@ class MultiNetworkGovernance:
         Process new referenda for a specific network.
 
         Args:
-            network_id: The network identifier
+            network_id: Network identifier
             new_referendums: Dictionary of new referenda
             referendum_info_for: Full referendum info
-            guild: The Discord guild object
+            guild: Discord guild object
         """
         try:
             # Get network configuration
@@ -307,7 +307,7 @@ class MultiNetworkGovernance:
                 )
                 await new_proposal_thread.message.edit(embed=general_info)
 
-                # Get substrate API for the network
+                # Get Substrate API for network
                 substrate_api = await self.handler.get_substrate_api(network_id)
                 if not substrate_api:
                     self.logger.error(f"SubstrateAPI not found for network {network_id}")
@@ -323,7 +323,7 @@ class MultiNetworkGovernance:
                     network_name=network_name
                 )
 
-                # Find the network logo or use a default one
+                # Find network logo or use default
                 logo_path = f'../assets/{network_name}/{network_name}.png'
                 try:
                     await instructions.edit(

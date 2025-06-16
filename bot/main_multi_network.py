@@ -26,8 +26,7 @@ from utils.multi_network_governance import MultiNetworkGovernance
 from utils.network_commands import NetworkCommands
 
 # API clients
-from utils.binance_api import BinanceAPI
-from utils.coinmarketcap_api import CoinmarketcapAPI
+from bot.utils.price_utils import get_asset_price_v1, get_asset_price_v2, update_all_prices
 
 # Bot tracking
 from utils.stats import StatsManager
@@ -42,53 +41,11 @@ bot.config = Config()
 logger = Logger()
 bot_started_at = datetime.now()
 
-# API clients for price data
-price_apis = {
-    'binance': BinanceAPI(),
-    'coinmarketcap': CoinmarketcapAPI(bot.config.CMC_API_KEY),
-}
+# Initialize stats and formatting
 stats = StatsManager()
-discord_format = DiscordFormatting(price_apis)
+discord_format = DiscordFormatting()
 
-def get_asset_price_v1(asset):
-    """Get asset price from binance API."""
-    try:
-        if asset in price_apis['binance'].prices:
-            return price_apis['binance'].prices[asset]
-    except Exception as error:
-        logger.error(f"Error getting asset price from Binance: {error}")
-    return None
-
-def get_asset_price_v2(asset_id):
-    """
-    Get asset price using available price APIs.
-    Maps network name to asset symbol if needed.
-    """
-    # Map network name to symbol if applicable
-    asset_mapping = {
-        'polkadot': 'DOT',
-        'kusama': 'KSM',
-        'westend': 'WND'
-    }
-
-    symbol = asset_mapping.get(asset_id.lower(), asset_id)
-
-    # Try Binance first
-    try:
-        if symbol in price_apis['binance'].prices:
-            return price_apis['binance'].prices[symbol]
-    except Exception:
-        pass
-
-    # Try CoinMarketCap as fallback
-    try:
-        price = price_apis['coinmarketcap'].get_price(symbol)
-        if price:
-            return price
-    except Exception as error:
-        logger.error(f"Error getting {symbol} price: {error}")
-
-    return 0
+# Price functions are now imported from price_utils
 
 # Attach the price getters to the bot instance
 bot.get_asset_price = get_asset_price_v1
@@ -134,7 +91,7 @@ async def on_ready():
 @tasks.loop(hours=3)
 async def check_governance():
     """
-    Periodic task that checks for governance proposals across all configured networks.
+    Periodic task checks for governance proposals across all configured networks.
     """
     if not hasattr(bot, 'multi_network_governance'):
         logger.error("Multi-network governance not initialized")
@@ -150,21 +107,21 @@ async def check_governance():
 
 @check_governance.before_loop
 async def before_check_governance():
-    """Wait for the bot to be ready before starting the governance check task."""
+    """Wait for bot to be ready before starting governance check task."""
     await bot.wait_until_ready()
 
-@tasks.loop(minutes=2)
+@tasks.loop(minutes=15)
 async def update_prices():
     """Update asset prices periodically."""
     try:
-        await price_apis['binance'].update_prices()
-        await price_apis['coinmarketcap'].update_prices()
+        update_all_prices()
+        stats.record_run("update_prices")
     except Exception as error:
         logger.error(f"Error updating prices: {error}")
 
 @update_prices.before_loop
 async def before_update_prices():
-    """Wait for the bot to be ready before starting the price update task."""
+    """Wait for bot to be ready before starting price update task."""
     await bot.wait_until_ready()
 
 # Helper methods for Discord operations
@@ -250,7 +207,7 @@ async def manage_discord_thread(
             )
             return thread
         elif operation == 'find':
-            # Find a thread by its index in the title (used for existing threads)
+            # Find thread by its index in title for use with existing threads
             async for thread in channel.archived_threads():
                 if f"#{index}" in thread.name:
                     return thread
@@ -259,7 +216,7 @@ async def manage_discord_thread(
         logger.error(f"Error managing Discord thread: {error}")
         return None
 
-# Attach helper methods to the bot instance
+# Attach helper methods to bot instance
 bot.lock_threads_by_message_ids = lock_threads_by_message_ids
 bot.create_or_get_role = create_or_get_role
 bot.get_or_create_governance_tag = get_or_create_governance_tag
@@ -271,7 +228,7 @@ bot.manage_discord_thread = manage_discord_thread
     description="Get information about the bot"
 )
 async def info_command(interaction: discord.Interaction):
-    """Display information about the bot and its configuration."""
+    """Display information about bot and its configuration."""
     try:
         # Get network information
         networks = await bot.network_manager.get_all_networks()
@@ -308,22 +265,19 @@ async def info_command(interaction: discord.Interaction):
     except Exception as error:
         logger.error(f"Error in info command: {error}")
         await interaction.response.send_message(
-            "An error occurred while getting bot information.",
+            "Error occurred while getting bot information.",
             ephemeral=True
         )
 
-# Run the bot
+# Run bot
 if __name__ == "__main__":
     try:
         bot.run(bot.config.DISCORD_BOT_TOKEN)
     except Exception as e:
-        logger.critical(f"Failed to start the bot: {e}")
+        logger.critical(f"Failed to start bot: {e}")
         sys.exit(1)
     finally:
-        # Close price APIs
-        for api in price_apis.values():
-            if hasattr(api, 'close'):
-                api.close()
+        # Price APIs are now managed in price_utils
 
         # Close network connections
         if hasattr(bot, 'multi_network_handler'):

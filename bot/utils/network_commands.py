@@ -13,13 +13,16 @@ class NetworkCommands:
     """
     Provides Discord commands for managing network configurations at runtime.
     """
+    # Class constants
+    CONFIRMATION_TIMEOUT_SECONDS = 30
+
     def __init__(self, bot, network_manager: NetworkManager):
         """
         Initialize network commands.
 
         Args:
-            bot: The Discord bot client
-            network_manager: The NetworkManager instance
+            bot: Discord bot client
+            network_manager: NetworkManager instance
         """
         self.bot = bot
         self.network_manager = network_manager
@@ -27,7 +30,7 @@ class NetworkCommands:
 
     def register_commands(self, tree: app_commands.CommandTree, guild_id: int):
         """
-        Register network management commands with the Discord bot.
+        Register network management commands with Discord bot.
 
         Args:
             tree: Discord command tree
@@ -44,7 +47,7 @@ class NetworkCommands:
             action='Action to perform on network configuration',
             network_id='Network identifier (e.g., polkadot, kusama)',
             network_name='Human-readable network name',
-            substrate_wss='WebSocket endpoint for the substrate node',
+            substrate_wss='WebSocket endpoint for Substrate node',
             symbol='Token symbol',
             token_decimal='Token decimal places'
         )
@@ -65,7 +68,7 @@ class NetworkCommands:
             symbol: Optional[str] = None,
             token_decimal: Optional[float] = None
         ):
-            # Check permissions - only admins can manage networks
+            # Check permissions. Only admins allowed to manage networks
             admin_role = interaction.guild.get_role(int(self.bot.config.DISCORD_ADMIN_ROLE))
             if admin_role not in interaction.user.roles:
                 await interaction.response.send_message(
@@ -196,7 +199,7 @@ class NetworkCommands:
         if success:
             await interaction.followup.send(
                 f"✅ Network '{network_name}' ({network_id}) successfully added. "
-                f"The bot will automatically start monitoring this network."
+                f"Bot will start monitoring this network within {self.network_manager.CONFIG_CHECK_INTERVAL_SECONDS} seconds."
             )
         else:
             await interaction.followup.send(
@@ -241,7 +244,7 @@ class NetworkCommands:
         if success:
             await interaction.followup.send(
                 f"✅ Network '{network_name}' ({network_id}) successfully updated. "
-                f"The changes will take effect within a minute."
+                f"Changes will take effect within {self.network_manager.CONFIG_CHECK_INTERVAL_SECONDS} seconds."
             )
         else:
             await interaction.followup.send(
@@ -264,14 +267,14 @@ class NetworkCommands:
         confirm_msg = await interaction.followup.send(
             f"⚠️ Are you sure you want to remove the '{network_id}' network? "
             f"All associated data will remain in the vote_counts.json file.\n\n"
-            f"Reply 'confirm' within 30 seconds to proceed."
+            f"Reply 'confirm' within {self.CONFIRMATION_TIMEOUT_SECONDS} seconds to proceed."
         )
 
         def check(m):
             return m.author == interaction.user and m.content.lower() == 'confirm'
 
         try:
-            await self.bot.wait_for('message', check=check, timeout=30.0)
+            await self.bot.wait_for('message', check=check, timeout=self.CONFIRMATION_TIMEOUT_SECONDS)
         except asyncio.TimeoutError:
             await interaction.followup.send("Operation cancelled due to timeout.")
             return
@@ -281,7 +284,7 @@ class NetworkCommands:
         if success:
             await interaction.followup.send(
                 f"✅ Network '{network_id}' successfully removed. "
-                f"The bot will no longer monitor this network."
+                f"Bot will no longer monitor this network."
             )
         else:
             await interaction.followup.send(
@@ -302,7 +305,7 @@ class NetworkCommands:
 
         if not existing_config:
             await interaction.followup.send(
-                f"Network '{network_id}' doesn't exist.",
+                f"Network '{network_id}' does not exist.",
                 ephemeral=True
             )
             return
@@ -316,7 +319,7 @@ class NetworkCommands:
             status = "enabled" if enable else "disabled"
             await interaction.followup.send(
                 f"✅ Network '{network_id}' successfully {status}. "
-                f"The changes will take effect within a minute."
+                f"Changes will take effect within {self.network_manager.CONFIG_CHECK_INTERVAL_SECONDS} seconds."
             )
         else:
             await interaction.followup.send(

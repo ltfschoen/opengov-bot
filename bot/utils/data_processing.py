@@ -390,10 +390,12 @@ class ProcessCallData:
         return data
 
 class DiscordFormatting:
-    def __init__(self, substrate=None):
+    def __init__(self, price_apis=None):
         self.config = Config()
-        self.substrate = substrate
+        self.substrate = None
         self.logging = Logger()
+        # price_apis parameter is kept for backward compatibility but no longer used
+        # prices are now fetched directly from price_utils
 
     async def format_key(self, key, parent_key):
         try:

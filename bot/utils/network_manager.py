@@ -11,9 +11,11 @@ class NetworkManager:
     Manages multiple blockchain networks, allowing for dynamic addition and removal
     while the bot is running.
     """
+    # Class constants
+    CONFIG_CHECK_INTERVAL_SECONDS = 60  # Check every minute
     def __init__(self, config_path="../data/networks.json"):
         """
-        Initialize the NetworkManager with the path to the networks configuration file.
+        Initialize NetworkManager with the path to networks configuration file.
 
         Args:
             config_path: Path to the JSON file containing network configurations
@@ -24,12 +26,12 @@ class NetworkManager:
         self._load_lock = asyncio.Lock()
         self._watch_task = None
 
-        # Ensure the network config file exists
+        # Ensure network config file exists
         if not os.path.exists(config_path):
             self._create_default_config()
 
     def _create_default_config(self):
-        """Create a default network configuration file if it doesn't exist."""
+        """Create default network configuration file if it does not exist."""
         default_config = {
             "polkadot": {
                 "enabled": True,
@@ -88,11 +90,11 @@ class NetworkManager:
         Add or update a network configuration.
 
         Args:
-            network_id: Unique identifier for the network
-            network_config: Configuration dict for the network
+            network_id: Unique identifier for network
+            network_config: Configuration dict for network
 
         Returns:
-            True if successful, False otherwise
+            True if successful or otherwise False
         """
         async with self._load_lock:
             try:
@@ -108,7 +110,7 @@ class NetworkManager:
                 async with aiofiles.open(self.config_path, 'w') as f:
                     await f.write(json.dumps(config, indent=4))
 
-                # Update in-memory networks if the added one is enabled
+                # Update in-memory networks if added one is enabled
                 if network_config.get('enabled', True):
                     self.networks[network_id] = network_config
 
@@ -123,10 +125,10 @@ class NetworkManager:
         Remove a network configuration.
 
         Args:
-            network_id: Unique identifier for the network to remove
+            network_id: Unique identifier for network to remove
 
         Returns:
-            True if successful, False otherwise
+            True if successful or otherwise False
         """
         async with self._load_lock:
             try:
@@ -135,7 +137,7 @@ class NetworkManager:
                     content = await f.read()
                     config = json.loads(content)
 
-                # Remove the network if it exists
+                # Remove network if it exists
                 if network_id in config:
                     del config[network_id]
 
@@ -166,14 +168,14 @@ class NetworkManager:
 
     async def _watch_config_changes(self):
         """
-        Watch for changes to the network configuration file and reload when changes occur.
-        This allows adding networks dynamically while the bot is running.
+        Watch for changes to network configuration file and reload when changes occur.
+        Allows adding networks dynamically while bot is running.
         """
         last_modified = os.path.getmtime(self.config_path) if os.path.exists(self.config_path) else 0
 
         while True:
             try:
-                await asyncio.sleep(60)  # Check every minute
+                await asyncio.sleep(self.CONFIG_CHECK_INTERVAL_SECONDS)  # Check every minute
 
                 if os.path.exists(self.config_path):
                     current_modified = os.path.getmtime(self.config_path)

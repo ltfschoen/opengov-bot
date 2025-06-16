@@ -16,10 +16,10 @@ class MultiNetworkHandler:
     """
     def __init__(self, network_manager: NetworkManager):
         """
-        Initialize the handler with a network manager.
+        Initialize handler with a network manager.
 
         Args:
-            network_manager: The NetworkManager instance to use for network configurations
+            network_manager: NetworkManager instance to use for network configurations
         """
         self.network_manager = network_manager
         self.logger = Logger()
@@ -115,7 +115,7 @@ class MultiNetworkHandler:
             with open('../data/vote_counts.json', 'r') as f:
                 vote_counts = json.load(f)
 
-            # Search for the thread ID and check if network matches
+            # Search for thread ID and check if network matches
             for network_id in vote_counts.keys():
                 for ref_index, ref_data in vote_counts.get(network_id, {}).items():
                     if (ref_index == str(ref_id) and
@@ -128,13 +128,13 @@ class MultiNetworkHandler:
             return None
 
     async def get_substrate_api(self, network_id: str) -> Optional[SubstrateAPI]:
-        """Get the SubstrateAPI instance for a specific network."""
+        """Get SubstrateAPI instance for a specific network."""
         return self.network_apis.get(network_id)
 
     async def save_vote_counts(self, network_id: str, referendum_id: str,
                                thread_id: int, data: dict):
         """
-        Save referendum data to the vote_counts.json file.
+        Save referendum data to vote_counts.json file.
 
         Args:
             network_id: Network identifier

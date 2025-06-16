@@ -92,7 +92,7 @@ def get_asset_price(asset_id, currencies='usd'):
     Fetches the price of an asset in the specified currencies from the CoinGecko API.
 
     Args:
-        asset_id (str): The ID of the asset for which to fetch the price (e.g., "bitcoin").
+        asset_id (str): The ID of the asset for which to fetch the price (e.g., "polkadot").
         currencies (str, optional): A comma-separated string of currency symbols
                                      (default is 'usd,gbp,eur').
 
