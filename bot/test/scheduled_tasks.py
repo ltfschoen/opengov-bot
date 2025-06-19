@@ -13,8 +13,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Load the .env file
 load_dotenv()
 
-# Get the DISCORD_TOKEN from the environment
-discord_token = os.getenv('DISCORD_TOKEN')
+# Get the DISCORD_API_KEY from the environment
+discord_api_key = os.getenv('DISCORD_API_KEY')
 
 
 def get_timestamp():
@@ -165,4 +165,4 @@ async def on_ready():
 
 # Don't run the bot when this module is imported for testing
 if __name__ == "__main__":
-    bot.run(discord_token)
+    bot.run(discord_api_key)

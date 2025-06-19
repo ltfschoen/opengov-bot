@@ -28,21 +28,25 @@ class NetworkCommands:
         self.network_manager = network_manager
         self.logger = Logger()
 
-    def register_commands(self, tree: app_commands.CommandTree, guild_id: int):
+    def register_commands(self, tree: app_commands.CommandTree, guild_id: int = None):
         """
         Register network management commands with Discord bot.
 
         Args:
             tree: Discord command tree
-            guild_id: Discord guild ID for command registration
+            guild_id: Discord guild ID for command registration, or None for global commands
         """
-        guild = discord.Object(id=guild_id)
+        guild = discord.Object(id=guild_id) if guild_id is not None else None
 
-        @tree.command(
-            name='network',
-            description='Manage blockchain networks for referendum monitoring',
-            guild=guild
-        )
+        # Handle global vs guild-specific command registration
+        command_kwargs = {
+            'name': 'network',
+            'description': 'Manage blockchain networks for referendum monitoring'
+        }
+        if guild is not None:
+            command_kwargs['guild'] = guild
+
+        @tree.command(**command_kwargs)
         @app_commands.describe(
             action='Action to perform on network configuration',
             network_id='Network identifier (e.g., polkadot, kusama)',

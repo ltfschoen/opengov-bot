@@ -14,26 +14,45 @@ from discord.ext import tasks, commands
 from typing import List, Dict, Union, Optional, Any
 
 # Utils
-from utils.config import Config
-from utils.logger import Logger
-from utils.data_processing import DiscordFormatting
-from utils.governance_monitor import GovernanceMonitor
+from bot.utils.config import Config
+from bot.utils.logger import Logger
+from bot.utils.data_processing import DiscordFormatting
+from bot.governance_monitor import GovernanceMonitor
 
 # Multi-network support
-from utils.network_manager import NetworkManager
-from utils.multi_network_handler import MultiNetworkHandler
-from utils.multi_network_governance import MultiNetworkGovernance
-from utils.network_commands import NetworkCommands
+from bot.utils.network_manager import NetworkManager
+from bot.utils.multi_network_handler import MultiNetworkHandler
+from bot.utils.multi_network_governance import MultiNetworkGovernance
+from bot.utils.network_commands import NetworkCommands
 
 # API clients
 from bot.utils.price_utils import get_asset_price_v1, get_asset_price_v2, update_all_prices
 
 # Bot tracking
-from utils.stats import StatsManager
+from bot.utils.stats import StatsManager
 
+# Setup intents with fallbacks for privileged intents
 intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
+
+# Try to enable privileged intents, but don't fail if they're not available
+try:
+    # Message content intent - needed for command parsing
+    intents.message_content = True
+except Exception as e:
+    print(f"Warning: Could not enable message_content intent: {e}")
+    print("Bot may have limited functionality without message content access.")
+
+try:
+    # Members intent - needed for member tracking
+    intents.members = True
+except Exception as e:
+    print(f"Warning: Could not enable members intent: {e}")
+    print("Member participation tracking may be limited.")
+
+# Log which intents are enabled
+print(f"Enabled intents: {', '.join([intent for intent, enabled in intents if enabled])}")
+print("If message_content or members intents are missing, enable them in the Discord Developer Portal.")
+
 
 # Initialize bot with command prefix and intents
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
@@ -74,14 +93,43 @@ async def on_ready():
 
         # Register network commands
         network_commands = NetworkCommands(bot, bot.network_manager)
-        network_commands.register_commands(bot.tree, bot.config.DISCORD_SERVER_ID)
+
+        # Check if server ID is valid
+        server_id = bot.config.DISCORD_SERVER_ID
+
+        # Wait a bit for guilds to load - Discord loads them asynchronously
+        await asyncio.sleep(2)
+
+        # Convert server_id to int if it's a string
+        if isinstance(server_id, str) and server_id.isdigit():
+            server_id = int(server_id)
+
+        # Check if the bot can see the guild
+        if server_id == 0 or not bot.get_guild(server_id):
+            logger.warning(f"Invalid or missing Discord server ID: {server_id}")
+            logger.warning("Commands will be registered globally instead of for a specific server")
+            logger.warning(f"Available guilds: {[g.id for g in bot.guilds]}")
+            server_id = None
+        else:
+            logger.info(f"Registering commands for server ID: {server_id}")
+
+        network_commands.register_commands(bot.tree, server_id)
 
         # Start background tasks
         check_governance.start()
         update_prices.start()
 
-        # Sync commands
-        await bot.tree.sync()
+        # Sync commands - handle Entry Point command error
+        try:
+            await bot.tree.sync()
+            logger.info("Command sync successful")
+        except discord.errors.HTTPException as e:
+            if "Entry Point command" in str(e):
+                logger.warning("Entry Point command error detected. This is normal for apps with Entry Points.")
+                logger.warning("Bot will continue to function normally despite this error.")
+            else:
+                # Re-raise if it's a different HTTP exception
+                raise
 
         logger.info("Bot initialization complete")
     except Exception as error:
@@ -272,9 +320,9 @@ async def info_command(interaction: discord.Interaction):
 # Run bot
 if __name__ == "__main__":
     try:
-        bot.run(bot.config.DISCORD_BOT_TOKEN)
+        bot.run(bot.config.DISCORD_API_KEY)
     except Exception as e:
-        logger.critical(f"Failed to start bot: {e}")
+        logger.error(f"Failed to start bot: {e}")
         sys.exit(1)
     finally:
         # Price APIs are now managed in price_utils

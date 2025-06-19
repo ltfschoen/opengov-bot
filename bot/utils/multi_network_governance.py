@@ -55,9 +55,17 @@ class MultiNetworkGovernance:
             referendum_data = await self.handler.check_all_referendums()
 
             # Get guild
-            guild = self.client.get_guild(self.config.DISCORD_SERVER_ID)
+            server_id = self.config.DISCORD_SERVER_ID
+            if server_id == 0:
+                self.logger.warning("DISCORD_SERVER_ID is set to 0. Please set a valid server ID in your .env file.")
+                self.logger.warning("Skipping forum post creation as no valid server is configured.")
+                return
+
+            guild = self.client.get_guild(server_id)
             if not guild:
-                self.logger.error(f"Guild not found with ID {self.config.DISCORD_SERVER_ID}")
+                self.logger.error(f"Guild not found with ID {server_id}")
+                self.logger.warning("Bot may not have joined the server or server ID might be incorrect.")
+                self.logger.warning("Please check your .env file and ensure the bot has been added to the server.")
                 return
 
             # Handle referenda for each network

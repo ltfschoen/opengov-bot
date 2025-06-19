@@ -17,8 +17,8 @@ client = discord.Client(intents=intents)
 # Load .env file
 load_dotenv()
 
-# Get DISCORD_TOKEN from environment
-discord_token = os.getenv('DISCORD_TOKEN')
+# Get DISCORD_API_KEY from environment
+discord_api_key = os.getenv('DISCORD_API_KEY')
 
 class MaterializedChainState:
     def __init__(self, url="wss://rpc.ibp.network/polkadot"):
@@ -277,4 +277,4 @@ async def on_message(message):
         await message.channel.send(embed=embed_data, file=discord.File('../../assets/polkadot/polkadot.png', filename="symbol.png"))
 
 
-client.run(discord_token)
+client.run(discord_api_key)

@@ -360,7 +360,7 @@ def run_ongoing_ref_tests(quiet=False, timeout=60):
     use_real_api = os.getenv('USE_REAL_APIS', 'false').lower() == 'true'
 
     # Set up environment variables for testing
-    os.environ['DISCORD_TOKEN'] = 'mock_token_for_testing'
+    os.environ['DISCORD_API_KEY'] = 'mock_token_for_testing'
 
     if not use_real_api:
         # Set up mocks for Discord modules

@@ -7,7 +7,15 @@ import json
 class Config:
     def __init__(self):
         try:
-            load_dotenv("../.env")
+            # Try to load from project root first (for when run directly)
+            if os.path.exists(".env"):
+                load_dotenv(".env")
+            # Fall back to relative path (for when run from bot directory)
+            elif os.path.exists("../.env"):
+                load_dotenv("../.env")
+            else:
+                print("Warning: No .env file found in either current directory or parent directory")
+
             self.logger = Logger()
 
             # Discord Settings
