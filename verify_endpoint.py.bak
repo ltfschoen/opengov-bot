@@ -115,7 +115,6 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
         # Always respond with 200 OK to any path for debugging
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain')
-        self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
 
@@ -295,7 +294,6 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
                     response = {'type': 1}  # Type 1 is PONG
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
-                    self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
                     self.send_header('Access-Control-Allow-Origin', '*')
                     self.end_headers()
                     response_json = json.dumps(response)
@@ -359,7 +357,6 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
                     response = {'type': 1}  # Type 1 is PONG
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
-                    self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
                     self.send_header('Access-Control-Allow-Origin', '*')
                     self.end_headers()
                     response_json = json.dumps(response)
@@ -372,7 +369,6 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
                 response = {'type': 1}  # Default to acknowledge
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
-                self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 response_json = json.dumps(response)
@@ -395,7 +391,6 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
                 print(f"⚠️ DEBUG MODE: Responding to unsupported path: {self.path}")
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
-                self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 response = {'type': 1, 'debug_info': f"Path {self.path} is not a standard Discord interaction path"}
@@ -406,7 +401,6 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
                 print(f"❌ Received request on unsupported path: {self.path}")
                 self.send_response(404)
                 self.send_header('Content-Type', 'text/plain')
-                self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.wfile.write(f"Not found: {self.path} is not a supported interaction endpoint".encode())
