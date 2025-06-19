@@ -55,11 +55,11 @@ def get_client_id():
 def start_tunnel(port=8000, verbose=False, config_file=None):
     """Start Cloudflare tunnel and capture the URL without blocking the main thread"""
     print("🚇 Starting Cloudflare tunnel...")
-    
+
     # Initialize tunnel_url and tunnel_process
     tunnel_url = None
     tunnel_process = None
-    
+
     # Enhanced debugging - check if the server is actually running on the port
     print(f"\n🔍 Verifying server is running on port {port} before starting tunnel...")
     server_running = check_server_running(port, timeout=5)
@@ -69,25 +69,25 @@ def start_tunnel(port=8000, verbose=False, config_file=None):
         print("Consider starting the verification server first.")
     else:
         print(f"\n✅ Server confirmed running on port {port}")
-    
+
     # Create command for cloudflared tunnel
     cmd = ['cloudflared', 'tunnel', '--no-autoupdate']
-    
+
     # Use --metrics flag to trigger macOS firewall permission prompt if needed
     cmd.extend(['--metrics', '0.0.0.0:45678'])
-    
+
     # Add URL parameter - this is the local server to forward to
     cmd.extend(['--url', f'http://127.0.0.1:{port}'])
-    
+
     # Add config file if specified
     if config_file and os.path.exists(config_file):
         cmd.extend(['--config', config_file])
         print(f"🔧 Using cloudflared config file: {config_file}")
-    
+
     # Add verbose flag if requested
     if verbose:
         cmd.extend(['--loglevel', 'debug'])
-    
+
     # Add metrics flag to explicitly bind to all interfaces, which will trigger the firewall prompt
     # This helps ensure cloudflared has proper network permissions
     cmd.extend(['--metrics', '0.0.0.0:45678'])
@@ -98,18 +98,18 @@ def start_tunnel(port=8000, verbose=False, config_file=None):
     # This ensures the exact path is preserved when forwarding requests
     origin_url = f"http://localhost:{port}/api/interactions=/api/interactions"
     cmd.extend(['--url', origin_url])
-    
+
     # Also add a general mapping for the base URL to handle other paths
     base_url = f"http://localhost:{port}"
     cmd.extend(['--url', base_url])
-    
+
     # Add no-tls-verify to avoid any potential certificate issues
     cmd.append('--no-tls-verify')
-    
+
     print(f"\n⚠️ IMPORTANT: Starting quick tunnel to {origin_url}")
     print(f"Full command: {' '.join(cmd)}")
     print(f"This will forward all requests including /api/interactions to your local server")
-    
+
     # Test the local server directly to confirm it's working
     try:
         import requests
@@ -124,10 +124,10 @@ def start_tunnel(port=8000, verbose=False, config_file=None):
     except Exception as e:
         print(f"⚠️ Could not connect directly to local server: {e}")
         print("This may indicate a problem with the local server, not the tunnel.")
-    
+
     # Save the configuration for reference, but don't use it for the tunnel
     config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cloudflared-config.yml')
-    
+
     # Create a basic config file for reference (not used for quick tunnels)
     basic_config = f"""# Cloudflare tunnel configuration reference
 # This file is for reference only - quick tunnels use command line arguments
@@ -143,33 +143,33 @@ ingress:
     path: /api/interactions
     originRequest:
       noTLSVerify: true
-  
+
   # IPv6 specific mapping for /api/interactions
   - hostname: "*"
     service: http://[::1]:{port}
     path: /api/interactions
     originRequest:
       noTLSVerify: true
-  
+
   # IPv4 fallback for all other paths
   - hostname: "*"
     service: http://127.0.0.1:{port}
     originRequest:
       noTLSVerify: true
-      
+
   # IPv6 fallback for all other paths
   - hostname: "*"
     service: http://[::1]:{port}
     originRequest:
       noTLSVerify: true
 """
-    
+
     with open(config_path, 'w') as f:
         f.write(basic_config)
-    
+
     print(f"Created reference config file at {config_path} (not used for quick tunnels)")
     print(f"Running tunnel command: {' '.join(cmd)}")
-    
+
     # Start the cloudflared tunnel process
     try:
         tunnel_process = subprocess.Popen(
@@ -179,60 +179,60 @@ ingress:
             universal_newlines=True,
             bufsize=1
         )
-        
+
         # Wait for the tunnel URL to appear in the output
         print("🔍 Waiting for tunnel URL to appear in output...")
         print("This may take up to 30 seconds. Looking for https://*.trycloudflare.com")
         url_found = False
         start_time = time.time()
-        
+
         # Track 404 errors and their causes
         error_404_count = 0
         error_paths = set()
-        
+
         while time.time() - start_time < 30:  # Wait up to 30 seconds
             line = tunnel_process.stdout.readline()
             if not line:
                 time.sleep(0.1)
                 continue
-                
+
             print(f"[Tunnel] {line.strip()}")
-            
+
             # Look for 404 errors in the tunnel logs
             if "404 Not Found" in line or "http_status:404" in line:
                 error_404_count += 1
                 print(f"\n⚠️ DETECTED 404 ERROR in tunnel logs (#{error_404_count})")
-                
+
                 # Try to extract the path that caused the 404
                 path_match = re.search(r'path=([^ ]+)', line)
                 if path_match:
                     path = path_match.group(1)
                     error_paths.add(path)
                     print(f"Path causing 404: {path}")
-                
+
                 # Look for origin service info
                 origin_match = re.search(r'originService=([^ ]+)', line)
                 if origin_match:
                     origin = origin_match.group(1)
                     print(f"Origin service: {origin}")
-                    
+
                 # Check for ingress rule info
                 ingress_match = re.search(r'ingressRule=(\d+)', line)
                 if ingress_match:
                     rule = ingress_match.group(1)
                     print(f"Ingress rule: {rule}")
-                    
+
                 print("This indicates the local server is not responding correctly to the request")
                 print("Check that your server is handling this path correctly")
-            
+
             # Look for the tunnel URL in the output
             if 'https://' in line and 'trycloudflare.com' in line:
                 print(f"DEBUG: Found potential tunnel URL line: {line.strip()}")
-                
+
                 # Try to extract the URL with regex
                 pattern = r'https://[\w\-]+([\-\w]+)*\.trycloudflare\.com'
                 match = re.search(pattern, line)
-                
+
                 if match:
                     tunnel_url = match.group(0)
                     print(f"DEBUG: Matched URL: {tunnel_url}")
@@ -240,12 +240,12 @@ ingress:
                     update_env_file(tunnel_url)
                     print(f"\n✅ Updated .env with TUNNEL_URL=\"{tunnel_url}\"")
                     break
-        
+
         # If we didn't find a URL but the tunnel is running, continue anyway
         if not url_found:
             print("⚠️ Timed out waiting for tunnel URL, but tunnel appears to be running")
             print("You can check the tunnel output manually for the URL")
-            
+
         # Start a background thread to continue reading output
         def keep_reading_output():
             while tunnel_process.poll() is None:
@@ -254,14 +254,14 @@ ingress:
                     if verbose or '404' in output or 'error' in output.lower():
                         print(f"[Tunnel] {output.strip()}")
                 time.sleep(0.1)
-        
+
         # Start the background thread
         output_thread = threading.Thread(target=keep_reading_output)
         output_thread.daemon = True
         output_thread.start()
-        
+
         return tunnel_url, tunnel_process
-        
+
     except Exception as e:
         print(f"❌ Error starting tunnel: {e}")
         return None, None
@@ -335,7 +335,7 @@ def is_port_in_use(port):
                 return True
     except Exception as e:
         print(f"IPv4 socket check error: {e}")
-    
+
     # Then try IPv6
     try:
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
@@ -346,7 +346,7 @@ def is_port_in_use(port):
                 return True
     except Exception as e:
         print(f"IPv6 socket check error: {e}")
-    
+
     print(f"Socket check: Port {port} is NOT in use")
     return False
 
@@ -354,7 +354,7 @@ def check_server_running(port=8000, timeout=5):
     """Check if a server is running on the given port with a shorter timeout to avoid hangs."""
     # Try multiple ways to connect to the server, prioritizing the Discord API endpoint
     # Discord sends verification requests to /api/interactions, so this is the most important endpoint to check
-    
+
     # First try the Discord API endpoints with both IPv4 and IPv6 support using HEAD requests
     # Discord uses HEAD requests for initial verification
     api_urls = [
@@ -362,11 +362,11 @@ def check_server_running(port=8000, timeout=5):
         f"http://127.0.0.1:{port}/api/interactions",  # IPv4 specific
         f"http://[::1]:{port}/api/interactions"      # IPv6 specific
     ]
-    
+
     print(f"\n🔍 Checking for Discord verification server on port {port}...")
     print(f"Discord requires the /api/interactions endpoint for verification")
     print(f"Testing with HEAD requests (what Discord uses for verification)...")
-    
+
     # First check the critical Discord API endpoints with HEAD requests
     for url in api_urls:
         print(f"Trying Discord endpoint with HEAD request: {url}...")
@@ -386,7 +386,7 @@ def check_server_running(port=8000, timeout=5):
             print(f"⚠️ Timeout connecting to {url}: {e}")
         except requests.exceptions.RequestException as e:
             print(f"❌ Failed to connect to {url}: {e}")
-    
+
     # Try POST requests with a Discord ping payload
     print("\nTrying POST requests with Discord ping payload...")
     # Discord ping payload (type 1)
@@ -397,7 +397,7 @@ def check_server_running(port=8000, timeout=5):
         'X-Signature-Ed25519': 'test_signature',  # Dummy value
         'X-Signature-Timestamp': str(int(time.time()))  # Current timestamp
     }
-    
+
     for url in api_urls:
         print(f"Trying Discord endpoint with POST request: {url}...")
         try:
@@ -420,7 +420,7 @@ def check_server_running(port=8000, timeout=5):
             print(f"⚠️ Timeout connecting to {url}: {e}")
         except requests.exceptions.RequestException as e:
             print(f"❌ Failed to connect to {url}: {e}")
-    
+
     # Try GET requests as fallback
     print("\nTrying GET requests as fallback...")
     for url in api_urls:
@@ -439,14 +439,14 @@ def check_server_running(port=8000, timeout=5):
             print(f"⚠️ Timeout connecting to {url}: {e}")
         except requests.exceptions.RequestException as e:
             print(f"❌ Failed to connect to {url}: {e}")
-    
+
     # If API endpoints don't work, try the base URLs as fallback
     base_urls = [
         f"http://localhost:{port}",      # This resolves to both IPv4 and IPv6 depending on system config
         f"http://127.0.0.1:{port}",      # IPv4 specific
         f"http://[::1]:{port}"           # IPv6 specific
     ]
-    
+
     print("Trying base URLs as fallback...")
     for url in base_urls:
         print(f"Trying {url}...")
@@ -465,27 +465,27 @@ def check_server_running(port=8000, timeout=5):
             print(f"⚠️ Timeout connecting to {url}: {e}")
         except requests.exceptions.RequestException as e:
             print(f"❌ Failed to connect to {url}: {e}")
-    
+
     # Last resort: check if the port is in use at the socket level
     if is_port_in_use(port):
         print(f"✅ Port {port} is in use according to socket check")
         print(f"Assuming verification server is running on port {port}")
         return True
-        
+
     # If we get here, we couldn't connect to any URL
     return False
 
 def find_running_verification_server(custom_port=None):
     """Check if a verification server is already running on common ports or a custom port"""
     common_ports = [8000, 8001, 3000]
-    
+
     # If a custom port is specified, check it first
     if custom_port and custom_port not in common_ports:
         common_ports.insert(0, custom_port)
-    
+
     print("\n🔍 Checking for running verification servers...")
     print(f"Checking ports: {', '.join(map(str, common_ports))}")
-    
+
     for port in common_ports:
         print(f"\n🔍 Checking port {port}...")
         if check_server_running(port):
@@ -494,9 +494,9 @@ def find_running_verification_server(custom_port=None):
             return port
         else:
             print(f"❌ No verification server found on port {port}")
-    
+
     print("\n❌ No verification server found on any common ports")
-    
+
     # If no ports found, check specifically for verify_endpoint.py process
     try:
         if sys.platform.startswith('win'):
@@ -519,7 +519,7 @@ def find_running_verification_server(custom_port=None):
                 pass
     except Exception as e:
         print(f"Error checking for verify_endpoint.py process: {e}")
-    
+
     return None
 
 def kill_process_on_port(port):
@@ -647,7 +647,7 @@ def main():
     # Check for custom port in arguments
     port = 8000  # Default port
     config_file = None  # Default: no config file
-    
+
     for arg in sys.argv:
         if arg.startswith('--port='):
             try:
@@ -669,7 +669,7 @@ def main():
 
     # Check if a verification server is already running
     verification_port = find_running_verification_server(custom_port=port)
-    
+
     # If a verification server is found, use its port for the tunnel
     if verification_port:
         print(f"\n✅ Using detected verification server on port {verification_port} for tunnel")
@@ -679,14 +679,14 @@ def main():
     else:
         existing_port = None  # No existing server found
         print(f"\n⚠️ No existing verification server found. Will use port {port} for new server.")
-        
+
     # Double check that we're using the right port
     print(f"\n🔍 Final port configuration: {port}")
     print(f"Tunnel will connect to: http://127.0.0.1:{port}")
     print(f"Verification server status: {'DETECTED on port ' + str(existing_port) if existing_port else 'NOT DETECTED'}")
     print(f"Will create new verification server: {'NO' if existing_port else 'YES'}")
     print("")
-    
+
     # Start tunnel and wait for URL
     tunnel_url, tunnel_process = start_tunnel(port, verbose=tunnel_verbose, config_file=config_file)
     if not tunnel_url:
@@ -697,17 +697,17 @@ def main():
     else:
         print(f"\n✅ Successfully started tunnel at: {tunnel_url}")
         print(f"Tunnel is forwarding to http://127.0.0.1:{port}")
-    
+
     # Double-check if we can connect to the local server
     server_running = False
     print(f"\n🔍 Testing connection to local server at http://127.0.0.1:{port}...")
-    
+
     # Try multiple endpoints with increasing timeouts
     endpoints = [
         ("/", 10),                      # Base URL with longer timeout
         ("/api/interactions", 10)       # Discord endpoint with longer timeout
     ]
-    
+
     for endpoint, timeout in endpoints:
         try:
             print(f"Trying {endpoint} with {timeout}s timeout...")
@@ -722,7 +722,7 @@ def main():
             print(f"🔌 Connection error. Server might not be listening on port {port}.")
         except requests.RequestException as e:
             print(f"❌ Error connecting to server: {e}")
-    
+
     # If we couldn't connect to the server
     if not server_running:
         # Try a simple socket check as last resort
@@ -740,7 +740,7 @@ def main():
                 print(f"❌ Port {port} is not open. No server is listening.")
         except Exception as e:
             print(f"❌ Socket check failed: {e}")
-        
+
         if not server_running:
             print("\nThe tunnel will not work correctly without a server to forward to.")
             print("Would you like to start a verification server now? (y/n)")
@@ -766,7 +766,7 @@ def main():
     print(f"   {tunnel_url}/api/interactions")
     print("   ⚠️ IMPORTANT: Discord's API actually uses this specific path when verifying")
     print("3. Click 'Save Changes' - it should verify successfully")
-    
+
     # If we're using an existing server, we don't need to run the verification server
     # Just prompt the user to continue after they've verified the endpoint
     input("⏸️  Press Enter after you've successfully saved the endpoint URL...")

@@ -30,13 +30,13 @@ class SimpleHandler(BaseHTTPRequestHandler):
                              (self.address_string(),
                               self.log_date_time_string(),
                               format % message_args))
-    
+
     def log_request(self, code='-', size='-'):
         # Only log if debug mode is enabled
         if DEBUG_MODE:
             self.log_message('"%s" %s %s',
                             self.requestline, str(code), str(size))
-    
+
     def do_POST(self):
         print("\n==== RECEIVED POST REQUEST ====")
         print(f"Client Address: {self.client_address}")
@@ -127,7 +127,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.end_headers()
         print(f"Sent OPTIONS response with CORS headers for path: {self.path}")
         print("✅ Added HEAD to allowed methods for Discord verification")
-        
+
     def do_HEAD(self):
         print("\n==== RECEIVED HEAD REQUEST ====")
         print(f"Client Address: {self.client_address}")
@@ -135,7 +135,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
         print(f"Request Version: {self.request_version}")
         print(f"Command: {self.command}")
         print(f"Headers: {self.headers}")
-        
+
         # Always respond with 200 OK for HEAD requests regardless of path
         # This is critical for Discord's endpoint verification
         self.send_response(200)

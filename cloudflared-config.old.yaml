@@ -12,20 +12,20 @@ ingress:
     path: /api/interactions
     originRequest:
       noTLSVerify: true
-  
+
   # IPv6 specific mapping for /api/interactions
   - hostname: "*"
     service: http://[::1]:8001
     path: /api/interactions
     originRequest:
       noTLSVerify: true
-  
+
   # IPv4 fallback for all other paths
   - hostname: "*"
     service: http://127.0.0.1:8001
     originRequest:
       noTLSVerify: true
-      
+
   # IPv6 fallback for all other paths
   - hostname: "*"
     service: http://[::1]:8001

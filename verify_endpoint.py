@@ -33,6 +33,9 @@ parser.add_argument('--port', type=int, default=8000, help='Port to run the serv
 args, _ = parser.parse_known_args()
 DEBUG_MODE = args.debug or '--debug' in sys.argv
 
+# Make DEBUG_MODE accessible to the handler class
+http.server.BaseHTTPRequestHandler.DEBUG_MODE = DEBUG_MODE
+
 if DEBUG_MODE:
     print("⚠️ WARNING: Running in DEBUG mode - signature verification will be BYPASSED")
     print("This mode should ONLY be used for testing and debugging")
@@ -55,12 +58,46 @@ if not PUBLIC_KEY:
 verify_key = VerifyKey(bytes.fromhex(PUBLIC_KEY))
 
 class InteractionHandler(http.server.BaseHTTPRequestHandler):
+    def prepare_discord_verification_message(self, timestamp, body):
+        """Helper method to prepare the message for Discord signature verification
+
+        Args:
+            timestamp (str): The X-Signature-Timestamp from the request
+            body (bytes|str): The request body
+
+        Returns:
+            bytes: Properly formatted message for verification
+        """
+        # Check if body is already bytes
+        if isinstance(body, bytes):
+            body_str = body.decode('utf-8')
+        else:
+            body_str = body
+
+        # Construct the message exactly as Discord expects
+        return (timestamp + body_str).encode('utf-8')
+
+    def get_debug_mode(self):
+        """Helper method to access DEBUG_MODE from anywhere in the handler"""
+        # First try to get it from instance
+        debug_mode = getattr(self, 'debug_mode', None)
+        if debug_mode is not None:
+            return debug_mode
+
+        # Then try to get it from class
+        debug_mode = getattr(self.__class__, 'DEBUG_MODE', None)
+        if debug_mode is not None:
+            return debug_mode
+
+        # Finally try to get it from globals
+        return globals().get('DEBUG_MODE', False)
+
     def log_request(self, code='-', size='-'):
         # Enhanced logging to track all requests and responses
         client_address = self.client_address[0] if hasattr(self, 'client_address') else 'unknown'
         path = self.path if hasattr(self, 'path') else 'unknown'
         print(f"\n==== REQUEST RECEIVED ====\nClient: {client_address}\nPath: {path}\nMethod: {self.command}\nResponse Code: {code}")
-        
+
     def log_message(self, format, *message_args):
         # Enhanced logging for all server messages
         print(f"SERVER LOG: {format % message_args if message_args else format}")
@@ -74,16 +111,16 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
         print(f"\n==== RECEIVED GET REQUEST ====")
         print(f"Path: {self.path}")
         print(f"Headers: {self.headers}")
-        
+
         # Always respond with 200 OK to any path for debugging
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
-        
+
         response = "Discord verification server is running\n"
         response += f"Port: {args.port}\n"
-        response += f"Debug Mode: {'ENABLED' if DEBUG_MODE else 'DISABLED'}\n"
+        response += f"Debug Mode: {'ENABLED' if self.get_debug_mode() else 'DISABLED'}\n"
         response += f"Requested Path: {self.path}\n"
         response += f"Supported Paths: /api/interactions, /interactions, /api/discord/interactions, /discord/interactions"
         self.wfile.write(response.encode())
@@ -101,7 +138,7 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Signature-Ed25519, X-Signature-Timestamp')
         self.send_header('Access-Control-Max-Age', '86400')  # 24 hours
         self.end_headers()
-        
+
     def do_HEAD(self):
         """Handle HEAD requests - Discord uses these to verify the endpoint"""
         print(f"\n==== RECEIVED HEAD REQUEST ====")
@@ -110,7 +147,7 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
         print(f"Request Version: {self.request_version}")
         print(f"Command: {self.command}")
         print(f"Headers: {self.headers}")
-        
+
         # Check for Cloudflare-specific headers to identify tunnel requests
         cf_headers = {k: v for k, v in self.headers.items() if k.lower().startswith('cf-')}
         if cf_headers:
@@ -118,11 +155,11 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
             print(f"Cloudflare Headers: {cf_headers}")
             print(f"X-Forwarded-For: {self.headers.get('X-Forwarded-For', 'Not present')}")
             print(f"X-Forwarded-Proto: {self.headers.get('X-Forwarded-Proto', 'Not present')}")
-        
+
         # Log the raw request line for debugging
         if hasattr(self, 'requestline'):
             print(f"Raw request line: {self.requestline}")
-        
+
         # Always respond with 200 OK to any path for HEAD requests
         # This is critical for Discord's endpoint verification
         print(f"\n✅ Responding with 200 OK to HEAD request for path: {self.path}")
@@ -132,7 +169,7 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, HEAD')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Signature-Ed25519, X-Signature-Timestamp')
         self.end_headers()
-        
+
         print(f"\n✅ HEAD request handled successfully for path: {self.path}")
         print(f"✅ Responded with 200 OK to HEAD request for path: {self.path}")
 
@@ -141,28 +178,28 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
         print(f"\n==== RECEIVED POST REQUEST ====")
         print(f"Path: {self.path}")
         print(f"Headers: {self.headers}")
-        
+
         # Read the request body regardless of path
         content_length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(content_length)
-        
+
         try:
             body_json = json.loads(body) if body else {}
             print(f"Request body: {json.dumps(body_json, indent=2)}")
         except json.JSONDecodeError:
             print(f"Request body (not JSON): {body}")
-        
+
         # Get signature and timestamp from headers
         signature = self.headers.get('X-Signature-Ed25519')
         timestamp = self.headers.get('X-Signature-Timestamp')
-        
+
         print(f"X-Signature-Ed25519: {signature}")
         print(f"X-Signature-Timestamp: {timestamp}")
-        
+
         # Accept requests on ANY path for maximum flexibility during debugging
         # This helps catch if Discord is using a different path than expected
         print(f"Checking if path '{self.path}' is valid for Discord interactions")
-        
+
         # List of supported paths
         supported_paths = [
             '/api/interactions',
@@ -176,13 +213,13 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
             '%2Fapi%2Finteractions',
             '%2Finteractions'
         ]
-        
+
         # Check for Cloudflare-specific headers
         cf_headers = {k: v for k, v in self.headers.items() if k.lower().startswith('cf-')}
         if cf_headers:
             print(f"\n✅ Cloudflare headers detected: {cf_headers}")
             print("This request is coming through the Cloudflare tunnel")
-            
+
             # Special handling for Cloudflare tunnel requests
             if self.command in ['HEAD', 'OPTIONS']:
                 print(f"\n✅ CRITICAL: Received {self.command} request from Cloudflare tunnel")
@@ -194,34 +231,35 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Signature-Ed25519, X-Signature-Timestamp')
                 self.end_headers()
                 return
-            
+
             # For other request types, continue with normal processing but be more permissive
             print(f"Processing Cloudflare tunnel request for path: {self.path}")
             # Always treat Cloudflare tunnel requests as valid paths
-            DEBUG_MODE = True
-            
+            # Use instance variable for this specific function scope
+            self.debug_mode = True
+
             if not signature or not timestamp:
                 print("❌ Missing signature or timestamp headers")
-                if DEBUG_MODE:
+                if self.get_debug_mode():
                     print("⚠️ DEBUG MODE: Continuing despite missing headers")
                 else:
                     self.send_response(401)
                     self.end_headers()
                     return
-            
+
             # Verify the request
             try:
-                if DEBUG_MODE:
+                if self.get_debug_mode():
                     print("✅ DEBUG MODE: Bypassing signature verification")
                 else:
                     # Verify the signature
-                    message = timestamp.encode() + body
+                    message = self.prepare_discord_verification_message(timestamp, body)
                     try:
                         verify_key.verify(message, bytes.fromhex(signature))
                         print("✅ Signature verification passed")
                     except Exception as e:
                         print(f"❌ Signature verification failed: {e}")
-                        if DEBUG_MODE:
+                        if self.get_debug_mode():
                             print("⚠️ DEBUG MODE: Continuing despite signature verification failure")
                         else:
                             self.send_response(401)
@@ -233,7 +271,7 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
                     interaction = json.loads(body) if body else {}
                 except json.JSONDecodeError:
                     print("❌ Failed to parse request body as JSON")
-                    if DEBUG_MODE:
+                    if self.get_debug_mode():
                         print("⚠️ DEBUG MODE: Using empty interaction object")
                         interaction = {}
                     else:
@@ -283,9 +321,60 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(f"Internal server error: {str(e)}".encode())
                 return
+        # Check if the path is in our supported paths list
+        elif self.path in supported_paths:
+            print(f"✅ Path '{self.path}' is a supported Discord interaction path")
+
+            # Handle interaction verification using the same logic as above
+            try:
+                # Verify the request
+                if self.get_debug_mode():
+                    print("✅ DEBUG MODE: Bypassing signature verification")
+                else:
+                    # Verify the signature
+                    message = self.prepare_discord_verification_message(timestamp, body)
+                    verify_key.verify(message, bytes.fromhex(signature))
+                    print("✅ Signature verification passed")
+
+                # Parse and handle the interaction
+                interaction = json.loads(body)
+
+                # Check if this is a ping
+                if interaction.get('type') == 1:
+                    print("✅ Received PING interaction, responding with PONG")
+                    response = {'type': 1}  # Type 1 is PONG
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    response_json = json.dumps(response)
+                    print(f"Sending response: {response_json}")
+                    self.wfile.write(response_json.encode())
+                    return
+
+                # Handle other interaction types if necessary
+                print(f"Handling interaction type: {interaction.get('type')}")
+                response = {'type': 1}  # Default to acknowledge
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                response_json = json.dumps(response)
+                print(f"Sending response: {response_json}")
+                self.wfile.write(response_json.encode())
+
+            except Exception as e:
+                print(f"❌ Error processing interaction: {str(e)}")
+                traceback.print_exc()  # Print full traceback for debugging
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({'type': 1}).encode())  # Still send type 1 (ACK) to prevent Discord timeout
+
         else:
             # In debug mode, handle all paths with a helpful response
-            if DEBUG_MODE:
+            if self.get_debug_mode():
                 print(f"⚠️ DEBUG MODE: Responding to unsupported path: {self.path}")
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
@@ -325,12 +414,12 @@ def run_server(port=None):
     print("\n==== DISCORD VERIFICATION SERVER ====")
     print(f"Starting server on port {port}")
     print(f"Debug mode: {'ENABLED' if args.debug else 'DISABLED'}")
-    
+
     try:
         try:
             # First try dual-stack IPv6 (which includes IPv4)
             print("Attempting to bind to IPv6 dual-stack socket...")
-            with DualStackServer(("::", port), InteractionHandler) as httpd:
+            with DualStackServer(("localhost", port), InteractionHandler) as httpd:
                 print(f"✅ Verification server running on port {port} (IPv4 and IPv6)")
                 print("\n==== SUPPORTED ENDPOINTS =====")
                 print(f"http://localhost:{port}/api/interactions (primary)")
@@ -355,7 +444,7 @@ def run_server(port=None):
 
                 print("\n==== DEBUG INFO ====")
                 print(f"Public Key: {PUBLIC_KEY[:8]}...{PUBLIC_KEY[-8:]}")
-                print(f"Debug Mode: {'ENABLED' if DEBUG_MODE else 'DISABLED'}")
+                print(f"Debug Mode: {'ENABLED' if globals().get("DEBUG_MODE", False) else 'DISABLED'}")
                 print(f"Port: {port}")
 
                 if not DEBUG_MODE:

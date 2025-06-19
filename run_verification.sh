@@ -1,32 +1,21 @@
 #!/bin/bash
 
-# Script to run both verification server and tunnel with proper log output
-# Created to ensure logs are visible even when running in background
+# Script to run the Discord verification server
+# Updated to work with VPS SSH tunnel approach instead of Cloudflare
 
-# Kill any existing cloudflared processes
-echo "🛑 Stopping any existing cloudflared processes..."
-pkill cloudflared 2>/dev/null || true
-
-# Kill port 8001
+# Kill any process already using port 8001
+echo "🛑 Stopping any processes using port 8001..."
 lsof -ti :8001 | xargs kill -9 2>/dev/null || true
 
-# Set port and config file
+# Set port for the verification server
 PORT=8001
-CONFIG_FILE="cloudflared-config.yml"
 
-# Start verification server in background but redirect output to main terminal
-echo "🚀 Starting verification server on port $PORT..."
-python verify_endpoint.py --debug --port=$PORT > >(while read line; do echo "[Verify] $line"; done) 2>&1 &
-VERIFY_PID=$!
+# Start verification server
+echo "🚀 Starting Discord verification server on port $PORT..."
+echo "📝 This server will handle Discord interaction verification requests"
+echo "🔄 The SSH tunnel (connect_to_vps.sh) will forward requests from your VPS to this server"
 
-# Give the verification server a moment to start
-sleep 2
+# Run verification server in foreground with proper error handling
+python verify_endpoint.py --debug --port=$PORT # > discord_verification_endpoint.log 2>&1
 
-# Start the tunnel with the config file
-echo "🚇 Starting Cloudflare tunnel with config file $CONFIG_FILE..."
-python start_dev.py --port=$PORT --tunnel-verbose --config-file=$CONFIG_FILE
-
-# If start_dev.py exits, also kill the verification server
-kill $VERIFY_PID 2>/dev/null || true
-
-echo "✅ All processes terminated"
+# The script will stay running until you press Ctrl+C

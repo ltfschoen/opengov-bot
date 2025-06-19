@@ -169,3 +169,6 @@ data/governance.cache
 data/onchain-votes.json
 data/vote_counts.json
 data/vote_periods.json
+
+# Discord Verification Interface Endpoint URL Log
+discord_verification_endpoint.log
