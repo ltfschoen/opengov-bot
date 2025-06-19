@@ -1,33 +1,24 @@
-# Cloudflare tunnel configuration reference
-# This file is for reference only - quick tunnels use command line arguments
+# Cloudflare tunnel configuration for Discord verification
+# Use this configuration with: cloudflared tunnel --url localhost:8001 --config cloudflared-config.yml
 
-# For quick tunnels, use: cloudflared tunnel --url http://127.0.0.1:8001
-
-# For named tunnels with more complex routing, use this configuration:
-tunnel: your-tunnel-name
+# Simplified ingress rules for handling Discord verification requests
 ingress:
-  # IPv4 specific mapping for /api/interactions
+  # Primary rule: Exact match for /api/interactions (what Discord uses)
   - hostname: "*"
-    service: http://127.0.0.1:8001
     path: /api/interactions
+    service: http://localhost:8001
     originRequest:
       noTLSVerify: true
-  
-  # IPv6 specific mapping for /api/interactions
+      # Explicitly set headers that Discord expects
+      headers:
+        Host: ["localhost:8001"]
+
+  # Handle /api/interactions/ with trailing slash
   - hostname: "*"
-    service: http://[::1]:8001
-    path: /api/interactions
+    path: /api/interactions/
+    service: http://localhost:8001
     originRequest:
       noTLSVerify: true
-  
-  # IPv4 fallback for all other paths
-  - hostname: "*"
-    service: http://127.0.0.1:8001
-    originRequest:
-      noTLSVerify: true
-      
-  # IPv6 fallback for all other paths
-  - hostname: "*"
-    service: http://[::1]:8001
-    originRequest:
-      noTLSVerify: true
+
+  # Default catch-all rule - must be the last rule
+  - service: http_status:404

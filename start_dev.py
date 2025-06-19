@@ -52,7 +52,7 @@ def get_client_id():
     load_dotenv(ENV_PATH)
     return os.getenv('DISCORD_APPLICATION_ID', 'your-application-id')
 
-def start_tunnel(port=8000, verbose=False):
+def start_tunnel(port=8000, verbose=False, config_file=None):
     """Start Cloudflare tunnel and capture the URL without blocking the main thread"""
     print("🚇 Starting Cloudflare tunnel...")
     
@@ -70,23 +70,41 @@ def start_tunnel(port=8000, verbose=False):
     else:
         print(f"\n✅ Server confirmed running on port {port}")
     
-    # For quick tunnels, we need to use the --url flag directly
-    # Start the cloudflared tunnel with additional debug flags if verbose
-    cmd = ['cloudflared', 'tunnel']
-
-    # Always use debug logging for better troubleshooting
-    cmd.append('--loglevel=debug')
+    # Create command for cloudflared tunnel
+    cmd = ['cloudflared', 'tunnel', '--no-autoupdate']
     
-    # IMPORTANT: Use the --no-autoupdate flag to prevent cloudflared from updating during verification
-    cmd.append('--no-autoupdate')
+    # Use --metrics flag to trigger macOS firewall permission prompt if needed
+    cmd.extend(['--metrics', '0.0.0.0:45678'])
+    
+    # Add URL parameter - this is the local server to forward to
+    cmd.extend(['--url', f'http://127.0.0.1:{port}'])
+    
+    # Add config file if specified
+    if config_file and os.path.exists(config_file):
+        cmd.extend(['--config', config_file])
+        print(f"🔧 Using cloudflared config file: {config_file}")
+    
+    # Add verbose flag if requested
+    if verbose:
+        cmd.extend(['--loglevel', 'debug'])
     
     # Add metrics flag to explicitly bind to all interfaces, which will trigger the firewall prompt
     # This helps ensure cloudflared has proper network permissions
     cmd.extend(['--metrics', '0.0.0.0:45678'])
 
     # CRITICAL: For quick tunnels, we must use the --url flag
-    origin_url = f"http://127.0.0.1:{port}"
+    # CRITICAL: For quick tunnels with explicit path mapping
+    # Map the specific /api/interactions path explicitly to avoid routing issues
+    # This ensures the exact path is preserved when forwarding requests
+    origin_url = f"http://localhost:{port}/api/interactions=/api/interactions"
     cmd.extend(['--url', origin_url])
+    
+    # Also add a general mapping for the base URL to handle other paths
+    base_url = f"http://localhost:{port}"
+    cmd.extend(['--url', base_url])
+    
+    # Add no-tls-verify to avoid any potential certificate issues
+    cmd.append('--no-tls-verify')
     
     print(f"\n⚠️ IMPORTANT: Starting quick tunnel to {origin_url}")
     print(f"Full command: {' '.join(cmd)}")
@@ -628,6 +646,8 @@ def main():
 
     # Check for custom port in arguments
     port = 8000  # Default port
+    config_file = None  # Default: no config file
+    
     for arg in sys.argv:
         if arg.startswith('--port='):
             try:
@@ -635,6 +655,11 @@ def main():
                 print(f"Using custom port: {port}")
             except (ValueError, IndexError):
                 print("⚠️ Invalid port specified, using default port 8000")
+        elif arg.startswith('--config-file='):
+            config_file = arg.split('=')[1]
+            print(f"Using cloudflared config file: {config_file}")
+            if not os.path.exists(config_file):
+                print(f"⚠️ Warning: Config file {config_file} not found!")
 
     if tunnel_verbose:
         print("💬 Tunnel verbose logging enabled - you'll see detailed request/response logs")
@@ -663,7 +688,7 @@ def main():
     print("")
     
     # Start tunnel and wait for URL
-    tunnel_url, tunnel_process = start_tunnel(port, verbose=tunnel_verbose)
+    tunnel_url, tunnel_process = start_tunnel(port, verbose=tunnel_verbose, config_file=config_file)
     if not tunnel_url:
         print("⚠️ Could not automatically detect tunnel URL. Continuing anyway...")
         print("You can manually check the Cloudflare tunnel output for the URL.")

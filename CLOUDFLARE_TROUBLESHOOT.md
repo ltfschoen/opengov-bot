@@ -14,38 +14,48 @@ The Cloudflare tunnel works like this:
 ## Troubleshooting Checklist (test_server.py + start_dev.py)
 
 ### 1. Verify Server Configuration
-- [ ] Confirm test_server.py is running with the correct port: `python test_server.py --port=8001 --debug`
-- [ ] Verify server is binding to all interfaces (0.0.0.0): Check line 163 in test_server.py
-- [ ] Test direct connection to the server: `curl -I http://localhost:8001/api/interactions`
-- [ ] Confirm server logs show the request and 200 OK response
-- [ ] Verify HEAD method handler is properly implemented in test_server.py
+- [x] Confirm test_server.py is running with the correct port: `python test_server.py --port=8001 --debug`
+- [x] Verify server is binding to all interfaces (0.0.0.0): Check line 163 in test_server.py
+- [x] Test direct connection to the server: `curl -I http://localhost:8001/api/interactions`
+- [x] Confirm server logs show the request and 200 OK response
+- [x] Verify HEAD method handler is properly implemented in test_server.py
 
 ### 2. Verify start_dev.py Port Detection
-- [ ] Check if start_dev.py correctly detects the running server: `python start_dev.py --port=8001 --tunnel-verbose`
-- [ ] Confirm the log message: "Found verification server running on port 8001"
-- [ ] Verify the tunnel is configured to use port 8001: "Tunnel will connect to: http://127.0.0.1:8001"
-- [ ] Check if the port detection logic in find_running_verification_server() is working correctly
+- [x] Check if start_dev.py correctly detects the running server: `python start_dev.py --port=8001 --tunnel-verbose`
+- [x] Confirm the log message: "Found verification server running on port 8001"
+- [x] Verify the tunnel is configured to use port 8001: "Tunnel will connect to: http://127.0.0.1:8001"
+- [x] Check if the port detection logic in find_running_verification_server() is working correctly
 
 ### 3. Test Tunnel Connectivity
-- [ ] Run test_server.py and start_dev.py in separate terminals with matching ports
-- [ ] Use verbose curl to test the tunnel: `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions`
-- [ ] Check if the request appears in the test_server.py logs
-- [ ] Look for 404 errors in the tunnel logs and identify the path causing them
+- [x] Run test_server.py and start_dev.py in separate terminals with matching ports
+- [x] Use verbose curl to test the tunnel: `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions`
+- [x] Check if the request appears in the test_server.py logs
+- [x] Look for 404 errors in the tunnel logs and identify the path causing them
 
 ### 4. Alternative Tunnel Configurations
-- [ ] Try direct path mapping: `cloudflared tunnel --url http://127.0.0.1:8001/api/interactions --loglevel=debug`
-- [ ] Test with explicit localhost binding: `server = HTTPServer(('127.0.0.1', SERVER_PORT), SimpleHandler)` in test_server.py
-- [ ] Try a different port (e.g., 8000 or 3000) in case port 8001 has issues
-- [ ] Test with a minimal tunnel command outside of start_dev.py: `cloudflared tunnel --url http://127.0.0.1:8001`
+- [x] Try direct path mapping: `cloudflared tunnel --url http://127.0.0.1:8001/api/interactions --loglevel=debug`
+- [x] Test with explicit localhost binding: `server = HTTPServer(('127.0.0.1', SERVER_PORT), SimpleHandler)` in test_server.py
+- [x] Try a different port (e.g., 8000 or 3000) in case port 8001 has issues
+- [x] Test with a minimal tunnel command outside of start_dev.py: `cloudflared tunnel --url http://127.0.0.1:8001`
 
 ### 5. Debug Request Handling
-- [ ] Add more detailed logging in test_server.py to print full request details
-- [ ] Modify the HEAD handler to log all headers and path information
-- [ ] Test with different path variations: `/api/interactions/`, `/interactions`, etc.
-- [ ] Check if the server responds differently to requests from localhost vs. from the tunnel
+- [x] Add more detailed logging in test_server.py to print full request details
+- [x] Modify the HEAD handler to log all headers and path information
+- [x] Test with different path variations: `/api/interactions/`, `/interactions`, etc.
+- [x] Check if the server responds differently to requests from localhost vs. from the tunnel
 
 ### 6. Network and Firewall Issues
-- [ ] Check if any local firewall is blocking connections between cloudflared and your server
+- [x] Check if any local firewall is blocking connections between cloudflared and your server
+- [x] Bind to 127.0.0.1 instead of 0.0.0.0 in test_server.py
+  - This still returned 404 when running `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions` 
+- [x] Try modifying test_server.py to bind to 127.0.0.1 instead of 0.0.0.0
+```python
+# Change line 163 in test_server.py from:
+server = HTTPServer(('0.0.0.0', SERVER_PORT), SimpleHandler)
+# To:
+server = HTTPServer(('127.0.0.1', SERVER_PORT), SimpleHandler)
+```
+  - This still returned 404 when running `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions` 
 - [ ] Verify network interfaces and routing with: `ifconfig` or `ip addr`
 - [ ] Test if the server is reachable from another local device on your network
 - [ ] Try temporarily disabling any security software that might interfere
@@ -53,39 +63,206 @@ The Cloudflare tunnel works like this:
 ## Troubleshooting Checklist (verify_endpoint.py + start_dev.py)
 
 ### 1. Verify Local Server Operation
-- [ ] Confirm verify_endpoint.py is running on the expected port: `ps aux | grep verify_endpoint`
-- [ ] Test direct connection to the server: `curl -I http://localhost:8001/api/interactions`
-- [ ] Verify the server returns 200 OK with proper CORS headers
-- [ ] Check server logs for any errors or warnings
+- [x] Confirm verify_endpoint.py is running on the expected port: `ps aux | grep verify_endpoint`
+- [x] Test direct connection to the server: `curl -I http://localhost:8001/api/interactions`
+- [x] Verify the server returns 200 OK with proper CORS headers
+- [x] Check server logs for any errors or warnings
 
 ### 2. Verify Tunnel Configuration
-- [ ] Confirm tunnel command is using the correct port: `cloudflared tunnel --url http://127.0.0.1:8001 --loglevel=debug`
-- [ ] Check tunnel logs for connection errors or routing issues
-- [ ] Verify the tunnel URL is correctly detected and displayed
-- [ ] Test the tunnel with verbose curl: `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions`
+- [x] Confirm tunnel command is using the correct port: `cloudflared tunnel --url http://127.0.0.1:8001 --loglevel=debug`
+- [x] Check tunnel logs for connection errors or routing issues
+- [x] Verify the tunnel URL is correctly detected and displayed
+- [x] Test the tunnel with verbose curl: `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions`
 
 ### 3. Network and Binding Issues
-- [ ] Ensure verify_endpoint.py is binding to all interfaces (0.0.0.0) not just localhost
-- [ ] Check if the server supports both IPv4 and IPv6 (dual-stack)
-- [ ] Verify no firewall is blocking local connections between cloudflared and your server
-- [ ] Test with explicit IPv4 binding: `--host=127.0.0.1` in verify_endpoint.py
+- [x] Ensure verify_endpoint.py is binding to all interfaces (0.0.0.0) not just localhost
+- [x] Check if the server supports both IPv4 and IPv6 (dual-stack)
+- [x] Verify no firewall is blocking local connections between cloudflared and your server
+- [x] Try modifying verify_endpoint.py to use explicit IPv4 binding (127.0.0.1) - *Did not resolve the issue*
 
 ### 4. Alternative Tunnel Configurations
-- [ ] Try direct path mapping: `cloudflared tunnel --url http://127.0.0.1:8001/api/interactions`
-- [ ] Test with different port numbers if 8001 might be restricted
+- [x] Bind to 127.0.0.1 instead of 0.0.0.0 in verify_endpoint.py
+  - This still returned 404 when running `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions` 
+- [x] Try direct path mapping with explicit ingress rules
+```bash
+# Try explicit path mapping for the /api/interactions endpoint
+cloudflared tunnel --url http://localhost:8001/api/interactions=/api/interactions --loglevel=debug
+```
+  - This still returned 404 when running `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions` 
+- [x] Test with different port numbers: 
+```bash
+# Try using port 8080 which is commonly allowed through firewalls
+python verify_endpoint.py --port=8080
+# In another terminal
+cloudflared tunnel --url http://localhost:8080 --loglevel=debug
+```
+  - This still returned 404 when running `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions`
 - [ ] Try running cloudflared with elevated permissions if needed
 - [ ] Check if cloudflared is up to date: `cloudflared update`
 
 ### 5. Discord Verification Specifics
-- [ ] Ensure HEAD requests are properly handled with 200 OK responses
-- [ ] Verify CORS headers include: `Access-Control-Allow-Methods: POST, GET, OPTIONS, HEAD`
-- [ ] Check that `/api/interactions` path is explicitly supported
-- [ ] Test with variations: `/api/interactions/` (trailing slash) and case variations
+- [X] Test HEAD requests directly through the tunnel to ensure requests are properly handled with 200 OK responses
+```bash
+# Test HEAD request directly to the tunnel URL
+curl -I https://your-tunnel-url.trycloudflare.com/api/interactions
+
+# Test HEAD request to localhost for comparison
+curl -I http://localhost:8080/api/interactions
+```
+  - This returned 200 OK when running `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions`
+- [X] Test with trailing slash variation: `curl -I https://your-tunnel-url.trycloudflare.com/api/interactions/`
+  - This still returned 404 when running `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions`
+- [x] Test HEAD requests directly through the tunnel:
+  - Local server returns 200 OK: `curl -I http://localhost:8001/api/interactions`
+  - Tunnel returns 404: `curl -I https://your-tunnel-url.trycloudflare.com/api/interactions`
+- [x] Test with trailing slash variation: 
+  - Tunnel still returns 404: `curl -I https://your-tunnel-url.trycloudflare.com/api/interactions/`
+- [X] Try using cloudflared config file instead of command line: **SOLUTION: Use a simplified cloudflared config file cloudflared-config.yml with explicit ingress rules instead of command line:**
+```bash
+# Stop any running cloudflared processes
+pkill cloudflared
+
+# Start verification server
+python verify_endpoint.py --port=8001
+
+# Start cloudflared with the config file
+cloudflared tunnel --url localhost:8001 --config cloudflared-config.yml
+```
+
+The successful config file includes:
+```yaml
+# Cloudflare tunnel configuration for Discord verification
+# Use this configuration with: cloudflared tunnel --url localhost:8001 --config cloudflared-config.yml
+
+# Simplified ingress rules for handling Discord verification requests
+ingress:
+  # Primary rule: Exact match for /api/interactions (what Discord uses)
+  - hostname: "*"
+    path: /api/interactions
+    service: http://localhost:8001
+    originRequest:
+      noTLSVerify: true
+      # Explicitly set headers that Discord expects
+      headers:
+        Host: ["localhost:8001"]
+
+  # Handle /api/interactions/ with trailing slash
+  - hostname: "*"
+    path: /api/interactions/
+    service: http://localhost:8001
+    originRequest:
+      noTLSVerify: true
+
+  # Default catch-all rule - must be the last rule
+  - service: http_status:404
+```
+ - This configuration successfully returns a 200 OK response with proper CORS headers when testing:
+```bash
+curl -I https://your-tunnel-url.trycloudflare.com/api/interactions
+HTTP/2 200
+date: Thu, 19 Jun 2025 07:39:03 GMT
+content-type: application/json
+cf-ray: 95215eca6e00a949-SYD
+cf-cache-status: DYNAMIC
+access-control-allow-origin: *
+access-control-allow-headers: Content-Type, X-Signature-Ed25519, X-Signature-Timestamp
+access-control-allow-methods: POST, GET, OPTIONS, HEAD
+server: cloudflare
+```
+- [X] Verify CORS headers in the response include: `Access-Control-Allow-Methods: POST, GET, OPTIONS, HEAD`
+- [X] Check that `/api/interactions` path is explicitly supported
+
+### Summary of Solution
+
+The key to solving the Discord verification issue was using a properly configured cloudflared config file with:
+1. Explicit path mapping for `/api/interactions`
+2. Handling for trailing slash variations
+3. Custom headers to ensure proper routing
+4. Simplified ingress rules with a proper catch-all at the end
 
 
 ## Common Issues and Solutions
 
-### 1. Path Routing Issue in Cloudflare Tunnel
+### 1. HTTP 530 Error (Origin Error)
+**Problem**: You're receiving a 530 error from Cloudflare, which indicates an issue with the connection between Cloudflare and your origin server (your local machine).
+
+```
+curl -I https://your-tunnel-url.trycloudflare.com/api/interactions
+HTTP/2 530
+```
+
+**Possible Solutions**:
+
+- [X] Try disabling TLS verification completely in your config:
+  ```yaml
+  # In cloudflared-config.yml
+  originRequest:
+    noTLSVerify: true
+  ```
+  - This still returned 530 when running `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions`
+
+- [X] Try running cloudflared directly without the config file first to test basic connectivity:
+  ```bash
+  cloudflared tunnel --url http://localhost:8001 --loglevel=debug
+  ```
+  - This returned 404 errors, which is why we switched to using a config file in the first place
+
+- [X] Try using 127.0.0.1 instead of localhost in your config file:
+  ```yaml
+  # In cloudflared-config.yml
+  service: http://127.0.0.1:8001  # Instead of http://localhost:8001
+  ```
+  - Updated both service URLs and Host header to use 127.0.0.1
+  - This still returned 530 when running `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions`
+
+- [X] Check if your local firewall is blocking outbound connections from cloudflared:
+  ```bash
+  # On macOS, check Application Firewall settings
+  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --listapps | grep cloudflared
+  ```
+  - NO it isn't
+
+- [X] Check if cloudflared has the latest CA certificates:
+  ```bash
+  # Update certificates
+  cloudflared update
+  ```
+  - Upgraded 2025.6.0 -> 2025.6.1 but still returned 530 when running `curl -v https://your-tunnel-url.trycloudflare.com/api/interactions`
+
+- [X] Check if there are any network issues by testing with a simpler endpoint:
+  ```bash
+  # Start a simple HTTP server
+  python -m http.server 8002
+  # Then try tunneling to it
+  cloudflared tunnel --url http://localhost:8002
+  ```
+  - This returned 404 instead of 530, indicating the tunnel connection is working but there's a path routing issue
+
+- [X] Try reinstalling cloudflared:
+  ```bash
+  brew reinstall cloudflared
+  ```
+  - 530 error still
+  
+- [X] Try an ultra-simplified configuration with connection optimizations:
+  ```yaml
+  # Ultra-simplified configuration
+  ingress:
+    - hostname: "*"
+      service: http://127.0.0.1:8001
+      originRequest:
+        noTLSVerify: true
+        disableChunkedEncoding: true
+        connectTimeout: 30s
+        tlsTimeout: 30s
+        tcpKeepAlive: 30s
+        headers:
+          Host: ["127.0.0.1:8001"]
+    - service: http_status:404
+  ```
+  - 530 error still
+
+### 2. Path Routing Issue in Cloudflare Tunnel
 **Problem**: The Cloudflare tunnel might not be correctly routing requests to the `/api/interactions` path. When you make a request to `https://aaa-ebony-explorer-parallel.trycloudflare.com/api/interactions`, the tunnel should forward it to `http://127.0.0.1:8001/api/interactions`, but it might be stripping the path or modifying it.
 
 **Solution**: Try running the Cloudflare tunnel with explicit path configuration:
@@ -128,6 +305,26 @@ This will show you the complete HTTP conversation, which might reveal why the 40
 ```bash
 curl -I https://aaa-ebony-explorer-parallel.trycloudflare.com/api/interactions/
 curl -I https://aaa-ebony-explorer-parallel.trycloudflare.com/API/interactions
+```
+
+### 7. VPN Interference
+**Problem**: VPNs can interfere with Cloudflare tunnel connections, causing Error 1033 or preventing proper tunnel establishment.
+
+**Solution**: 
+- Temporarily disable your VPN when testing tunnel connectivity
+- If you need to use a VPN, configure split tunneling to exclude cloudflared
+- Add cloudflared to your VPN's exceptions list
+
+### 8. Explicit Path Mapping
+**Problem**: Quick tunnels might not correctly forward paths to your local server.
+
+**Solution**: Try starting cloudflared with explicit path mapping:
+```bash
+# Start tunnel with explicit path mapping
+cloudflared tunnel --url http://localhost:8001/api/interactions=http://localhost:8001/api/interactions
+
+# Or try with a catchall and specific path
+cloudflared tunnel --url http://localhost:8001 --url http://localhost:8001/api/interactions=/api/interactions
 ```
 
 ## Security Software Configuration

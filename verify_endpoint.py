@@ -338,6 +338,8 @@ def run_server(port=None):
                 print(f"http://localhost:{port}/api/discord/interactions")
                 print(f"http://localhost:{port}/discord/interactions")
                 print("\nWaiting for Discord verification requests...")
+                print("\nServer is ready to receive Discord verification requests")
+                print("Press Ctrl+C to stop the server")
                 httpd.serve_forever()
         except (socket.gaierror, OSError) as e:
             # Fall back to IPv4 only if IPv6 is not available
