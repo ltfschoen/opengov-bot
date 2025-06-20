@@ -296,6 +296,7 @@ curl -I https://your-tunnel-url.trycloudflare.com/api/interactions
   - **SOLVED** since interacting with Discord interactive endpoint URL is considered a production environment activity, and we shouldn't use `--debug` in production or when registering your endpoint with Discord because: Debug mode bypasses signature verification, which Discord specifically tests during endpoint verification. After the verification server is working correctly, you want the security of proper signature verification for all interactions. Running without debug mode ensures all Discord requests are properly authenticated. The --debug flag is still useful for local testing when you are testing interaction flows without going through Discord, troubleshooting issues without worrying about signature verification, sending mock requests that don't have proper signatures.
 
   But, verification logs show that the `Signature was forged or corrupt`.
+  Fixed by applying improvements to nginx configuration in [nginx_signature_fix.conf](./nginx_signature_fix.conf)
 
 - [ ] Alternatives. See [_VPS_SETUP.md](./_VPS_SETUP.md)
 

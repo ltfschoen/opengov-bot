@@ -74,8 +74,16 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
         else:
             body_str = body
 
+        # Enhanced debugging for production troubleshooting
+        print(f"DEBUG VERIFICATION - Timestamp: {timestamp}")
+        print(f"DEBUG VERIFICATION - Body first 50 chars: {body_str[:50] if body_str else 'empty'}")
+        print(f"DEBUG VERIFICATION - Body type: {type(body)}")
+        print(f"DEBUG VERIFICATION - Body length: {len(body_str) if body_str else 0}")
+
         # Construct the message exactly as Discord expects
-        return (timestamp + body_str).encode('utf-8')
+        message = (timestamp + body_str).encode('utf-8')
+        print(f"DEBUG VERIFICATION - Full message hash: {hash(message)}")
+        return message
 
     def get_debug_mode(self):
         """Helper method to access DEBUG_MODE from anywhere in the handler"""
@@ -181,6 +189,17 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
         print(f"\n==== RECEIVED POST REQUEST ====")
         print(f"Path: {self.path}")
         print(f"Headers: {self.headers}")
+
+        # Detailed header inspection for debugging
+        all_headers = list(self.headers.items())
+        print(f"DEBUG HEADERS - All request headers ({len(all_headers)}):\n")
+        for name, value in all_headers:
+            print(f"DEBUG HEADERS - {name}: {value}")
+
+        # Check for proxy headers that might indicate transformation
+        proxy_headers = [h for h in all_headers if any(x in h[0].lower() for x in ['proxy', 'forward', 'real'])]
+        if proxy_headers:
+            print(f"DEBUG HEADERS - Found proxy/forwarding headers: {proxy_headers}")
 
         # Read the request body regardless of path
         content_length = int(self.headers.get('Content-Length', 0))
@@ -345,10 +364,71 @@ class InteractionHandler(http.server.BaseHTTPRequestHandler):
                 if self.get_debug_mode():
                     print("✅ DEBUG MODE: Bypassing signature verification")
                 else:
-                    # Verify the signature
+                    # Verify the signature with enhanced debugging
                     message = self.prepare_discord_verification_message(timestamp, body)
-                    verify_key.verify(message, bytes.fromhex(signature))
-                    print("✅ Signature verification passed")
+                    print(f"DEBUG VERIFICATION - Signature hex: {signature[:20]}... (len: {len(signature) if signature else 0})")
+
+                    # Validate signature before verification
+                    if not signature:
+                        print("❌ ERROR: Signature is empty")
+                        self.send_response(401)
+                        self.send_header('Content-Type', 'application/json')
+                        self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"error": "Missing signature"}).encode())
+                        return
+
+                    # Validate signature is hex and correct length
+                    try:
+                        # Clean the signature - some proxies might add whitespace
+                        clean_signature = signature.strip()
+                        if len(clean_signature) != 128:
+                            print(f"❌ ERROR: Signature has wrong length: {len(clean_signature)}, expected 128 hex chars")
+                            self.send_response(401)
+                            self.send_header('Content-Type', 'application/json')
+                            self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
+                            self.send_header('Access-Control-Allow-Origin', '*')
+                            self.end_headers()
+                            self.wfile.write(json.dumps({"error": "Invalid signature length"}).encode())
+                            return
+
+                        # Validate it's proper hex
+                        signature_bytes = bytes.fromhex(clean_signature)
+                        if len(signature_bytes) != 64:
+                            print(f"❌ ERROR: Signature not correct length after hex conversion: {len(signature_bytes)} bytes")
+                            self.send_response(401)
+                            self.send_header('Content-Type', 'application/json')
+                            self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
+                            self.send_header('Access-Control-Allow-Origin', '*')
+                            self.end_headers()
+                            self.wfile.write(json.dumps({"error": "Invalid signature format"}).encode())
+                            return
+
+                        verify_key.verify(message, signature_bytes)
+                        print("✅ Signature verification passed")
+                    except ValueError as e:
+                        print(f"❌ Signature validation error: {e}")
+                        # Log the specific bytes that failed verification
+                        print(f"DEBUG VERIFICATION - First 50 bytes being verified: {message[:50]}")
+                        self.send_response(401)
+                        self.send_header('Content-Type', 'application/json')
+                        self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"error": str(e)}).encode())
+                        return
+                    except Exception as e:
+                        print(f"❌ Signature verification failed: {e}")
+                        # Log the specific bytes that failed verification
+                        print(f"DEBUG VERIFICATION - First 50 bytes being verified: {message[:50]}")
+                        self.send_response(401)
+                        self.send_header('Content-Type', 'application/json')
+                        self.send_header('User-Agent', 'JAM DAO DiscordBot (https://github.com/ltfschoen/opengov-bot, 1.0)')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"error": "Invalid signature"}).encode())
+                        return
 
                 # Parse and handle the interaction
                 interaction = json.loads(body)

@@ -16,6 +16,7 @@ echo "📝 This server will handle Discord interaction verification requests"
 echo "🔄 The SSH tunnel (connect_to_vps.sh) will forward requests from your VPS to this server"
 
 # Run verification server in foreground with proper error handling
-python verify_endpoint.py --port=$PORT # > discord_verification_endpoint.log 2>&1
+# Save all output to a log file while also displaying in terminal
+python verify_endpoint.py --port=$PORT 2>&1 | tee discord_verification.log
 
 # The script will stay running until you press Ctrl+C
