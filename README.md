@@ -217,16 +217,64 @@ Directories like `.git`, `__pycache__`, `venv`, etc. are automatically ignored.
 
 ---
 
-## Development with Cloudflare Tunnel
+## Development with VPS-Based Reverse Proxy and Nginx for Discord Verification
 
-Development script creates a Cloudflare tunnel to expose your local bot to the internet, making it accessible to Discord without deploying to a production server.
+The verification server is designed to run on a VPS with Nginx as a reverse proxy, which provides a secure and reliable way to expose your Discord interaction endpoint to the internet. Discord strictly requires HTTPS for all interaction endpoints in production environments. This was adopted instead of using Cloudflare's tunnels as it always returned 404 possibly due to not supporting subdomains.
 
 ### Prerequisites
 
-- Install Cloudflared:
-  ```shell
-  brew install cloudflare/cloudflare/cloudflared
-  ```
+- VPS Server with SSH access
+- Nginx installed on your VPS with SSL/HTTPS configured
+- A domain or subdomain pointed to your VPS
+- Valid SSL certificate (e.g., from Let's Encrypt) as Discord requires HTTPS for interaction endpoints
+
+### Nginx Configuration as Reverse Proxy for Discord Interactions
+
+Assuming your config file is `/etc/nginx/sites-available/your.domain.com` with nginx and SSL certificate setup with letsenrypt, and domain pointing to VPS IP address using Ubuntu
+
+Backup existing Nginx configuration
+```bash
+sudo cp /etc/nginx/sites-available/your.domain.com /etc/nginx/sites-available/your.domain.com.backup
+```
+
+Add a configuration block to your Nginx site configuration (in the server block with `listen 443 ssl;`) as shown in [nginx_signature_fix.conf](nginx_signature_fix.conf).
+
+After making changes to the Nginx configuration, test and reload:
+
+```bash
+sudo nginx -t
+```
+
+Check symlink exists, otherwise create it `sudo ln -s /etc/nginx/sites-available/my-site /etc/nginx/sites-enabled/`
+```bash
+ls -l /etc/nginx/sites-enabled/
+```
+
+Reload Nginx if the test is successful
+```bash
+sudo systemctl reload nginx
+```
+
+### SSH Tunnel Setup
+
+Update your `.env` file with the following VPS-related variables:
+
+```bash
+# VPS Configuration
+VPS_USER="your_vps_username"
+VPS_HOST="your.domain.com"
+VPS_PORT=22  # SSH port, usually 22
+VPS_PRIVATE_KEY_FILE="~/.ssh/your_private_key"  # Path to your SSH key
+```
+
+To forward requests from your VPS to your local development machine using reverse tunnel:
+
+```bash
+# Connect to your VPS with port forwarding
+./connect_to_vps.sh
+```
+
+This script establishes an SSH tunnel between your local machine and the VPS, forwarding traffic on port 8001 from your VPS to your local verification server.
 
 - Set up your `.env` file with the required configuration values:
 
@@ -358,22 +406,74 @@ https://discord.com/api/v9/applications/{YOUR_APPLICATION_ID}
 With a payload containing:
 ```json
 {
-  "interactions_endpoint_url": "https://your-tunnel-url.trycloudflare.com/api/interactions"
+  "interactions_endpoint_url": "https://your-domain.com/api/interactions"
 }
 ```
 
-#### Debugging Discord Interaction Endpoint Verification
+#### Discord Interaction Endpoint Verification with VPS
 
-For the best debugging experience when troubleshooting Discord interaction endpoint verification issues, run the following command:
+Follow this step-by-step workflow to set up and test your Discord interaction verification by updating the Discord application:
 
-```bash
-python verify_endpoint.py --debug &
-python start_dev.py --tunnel-verbose
-```
+1. **Set up your VPS with Nginx and HTTPS**
+   - Install Nginx on your VPS
+   - Set up SSL with Let's Encrypt or another certificate provider
+   - Configure Nginx using the configuration provided in [nginx_signature_fix.conf](nginx_signature_fix.conf)
+   - Test that HTTPS works on your domain
 
-This will:
-- Start the verification server in debug mode (bypassing signature verification)
-- Enable verbose tunnel logging to see all requests and responses
+2. **Configure your local environment**
+   - Update your `.env` file with VPS connection details
+   - Ensure DISCORD_PUBLIC_KEY is set properly in your `.env` file
+
+3. **Testing locally with "debug" mode**
+   ```bash
+   # For local testing only as "debug" mode bypasses signature verification
+   python verify_endpoint.py --debug 2>&1 | tee discord_verification.log
+   ```
+   
+4. **For Discord verification, run in production mode**
+   ```bash
+   # Start your Discord verification server locally on port 8001
+   # For actual Discord verification when saving Interactions Endpoint URL in Discord Developer Portal with proper signature verification enabled
+   ./run_verification.sh
+
+   # Wait for SSH tunnel to be established
+
+   # OR without the debug flag:
+   python verify_endpoint.py 2>&1 | tee discord_verification.log
+   ```
+   
+   > **Important:** When saving the endpoint URL in Discord Developer Portal, the server MUST NOT be running debug mode, or verification will fail.
+
+5. **Create SSH tunnel to your VPS**
+   ```bash
+   # In another terminal connect to your VPS via SSH tunnel to forward requests
+   ./connect_to_vps.sh
+   ```
+
+6. **Test the endpoint locally first**
+   ```bash
+   # Test with the provided script
+   ./test_discord_request.sh
+   ```
+
+7. **Set the Interactions Endpoint URL in Discord Developer Portal**
+   - Go to your application in the Discord Developer Portal
+   - In the "General Information" section, set the "Interactions Endpoint URL" to:
+     `https://your-domain.com/api/interactions`
+   - Click "Save Changes" and verify that the URL passes Discord's verification
+
+8. **Monitor the Nginx server logs on VPS for activity**
+   - Watch your local verification server logs
+   ```bash
+   sudo tail -f /var/log/nginx/error.log
+   ```
+
+This setup:
+- Uses a secure HTTPS endpoint required by Discord
+- Leverages your VPS as a stable public-facing server
+- Forwards traffic to your local development machine for easy debugging
+
+
 - Show detailed information about Discord's verification attempts
 
 If you're experiencing issues with Discord endpoint verification, follow these steps to debug:
@@ -393,10 +493,10 @@ If you're experiencing issues with Discord endpoint verification, follow these s
    - Watch for incoming requests when you save the endpoint URL
    - If you don't see any logs, the request isn't reaching your server
 
-3. **Verify Tunnel Configuration**:
-   - Make sure the tunnel is forwarding to the correct port
-   - Check that the tunnel URL matches what you entered in Discord
-   - Try restarting the tunnel with `python start_dev.py --tunnel-verbose`
+3. **Verify SSH Tunnel Configuration**:
+   - Make sure your SSH tunnel is active and forwarding to the correct port
+   - Check that your VPS domain is correctly configured with HTTPS
+   - Try reconnecting the tunnel with `./connect_to_vps.sh`
 
 4. **Handle Port Conflicts**:
    - If you see an error like `Error: Port 8000 is already in use`, run this command to kill any processes using that port:
@@ -405,61 +505,150 @@ If you're experiencing issues with Discord endpoint verification, follow these s
    ```
    - This safely terminates any processes using port 8000 without showing errors if none are found
    - You can replace `8000` with any port number you're trying to use
-   - Ensure your Cloudflare tunnel is forwarding to the same port as your verification server
-   - Test your tunnel URL directly in a browser: `https://your-tunnel-url.trycloudflare.com/api/interactions`
+   - Ensure your Nginx configuration is correctly forwarding to your verification server port
+   - Test your domain URL directly in a browser: `https://your-domain.com/api/interactions`
    - You should see a response from your verification server
 
 #### Troubleshooting Verification Issues
 
 If you encounter verification issues with the Discord interaction endpoint, try the following:
 
-1. **Use Verbose Tunnel Logging**:
-   - Run with the `--tunnel-verbose` flag to see all requests passing through your tunnel
-   - Look for `[Tunnel REQUEST]` entries when you save the interaction endpoint URL in Discord
-   - If you don't see any requests when saving in Discord, the connection isn't reaching your tunnel
+1. **Check SSH Tunnel Status**:
+   - Verify your SSH tunnel is active with `netstat -tuln | grep 8001` (especially if get "Connection refused" errors)
+   - Make sure the tunnel is properly forwarding to the right port
+   - If needed, reconnect the SSH tunnel with `./connect_to_vps.sh`
 
-2. **Check Port Consistency**:
-   - Make sure your verification server and tunnel are using the same port
-   - The `start_dev.py` script should detect existing servers and use their port
-   - You can specify a custom port with `--port=8080` for both scripts
+2. **Check for firewall issues on VPS**: `sudo ufw status`
 
-1. **Run in Debug Mode**: The verification server includes a debug mode that bypasses signature verification, which can help isolate whether the issue is with the signature verification or something else:
-   ```
-   python start_dev.py --debug
-   ```
-   or directly:
+3. **Check Port Consistency**:
+   - Ensure your verification server is running on port 8001 (or the port specified in connect_to_vps.sh)
+   - Make sure Nginx is properly configured to forward requests to this port
+   - You can specify a custom port when starting the verification server with `--port=8080`
+
+4. **Debug Signature Verification**: The verification server includes a debug mode that bypasses signature verification, which can help isolate whether the issue is with the signature verification or something else:
    ```
    python verify_endpoint.py --debug
    ```
+   > Note: Remember that you must use the non-debug mode for actual Discord verification when saving the intereactions endpoint URL in the Discord Developer Portal.
 
-2. **Test Local Endpoint**: You can test if your verification server is working correctly by sending a test request locally:
+5. **Test Local Endpoint**: You can test if your verification server is working correctly by sending a test request locally:
    ```bash
-   python -c "import requests; print(requests.post('http://localhost:8000/api/interactions', json={'type': 1}, headers={'X-Signature-Ed25519': '0'*128, 'X-Signature-Timestamp': '0'}).status_code)"
+   python -c "import requests; print(requests.post('http://localhost:8001/api/interactions', json={'type': 1}, headers={'X-Signature-Ed25519': '0'*128, 'X-Signature-Timestamp': '0'}).status_code)"
    ```
    This should return `401` with normal mode (invalid signature) or `200` with debug mode.
+   
+   Or use the provided test script with either your local server or VPS domain:
+   ```bash
+   # Test against local server
+   ./test_discord_request.sh http://localhost:8001/api/interactions
+   
+   # Test against your VPS domain (production)
+   ./test_discord_request.sh https://your-domain.com/api/interactions
+   ```
 
-3. **Examine Request Details**: The verification server logs detailed information about incoming requests. Look for:
+6. **Examine Request Details**: The verification server logs detailed information about incoming requests. Look for:
    - The request path (should be `/api/interactions`)
    - Headers (especially `X-Signature-Ed25519` and `X-Signature-Timestamp`)
    - Request body (should be JSON with a `type` field)
    - Any signature verification errors
 
-4. **Check Your Public Key**: Ensure your `DISCORD_PUBLIC_KEY` in the `.env` file matches exactly with the one in your Discord Developer Portal.
+7. **Check Your Public Key**: Ensure your `DISCORD_PUBLIC_KEY` in the `.env` file matches exactly with the one in your Discord Developer Portal.
 
-5. **Verify Tunnel URL**: Make sure your tunnel URL is accessible and correctly configured in the Discord Developer Portal.
+8. **Verify Tunnel URL**: Make sure your tunnel URL is accessible and correctly configured in the Discord Developer Portal.
 
-6. **Browser Network Tab**: If you see a 400 error in your browser's network tab when saving the interaction endpoint URL, it could indicate:
+9. **Browser Network Tab**: If you see a 400 error in your browser's network tab when saving the interaction endpoint URL, it could indicate:
    - The endpoint is not reachable from Discord's servers
    - The response format is incorrect
    - The signature verification is failing
    - CORS issues preventing proper communication
 
-7. **CORS Support**: The verification server now includes proper CORS headers to support cross-origin requests from Discord:
+10. **CORS Support**: The verification server now includes proper CORS headers to support cross-origin requests from Discord:
    - Handles OPTIONS preflight requests
    - Includes appropriate Access-Control-Allow headers
    - You can see detailed logs of these requests in the server output
 
-8. **Multiple Endpoints**: While Discord officially uses `/api/interactions`, our server also supports `/interactions`, `/api/discord/interactions`, and `/discord/interactions` for flexibility during testing.
+11. **Multiple Endpoints**: While Discord officially uses `/api/interactions`, our server also supports `/interactions`, `/api/discord/interactions`, and `/discord/interactions` for flexibility during testing.
+
+### Advanced Troubleshooting
+
+#### Security Software Configuration
+
+Security software can interfere with Discord interactions. Check the following:
+
+##### macOS Built-in Firewall
+
+**Required Configuration:**
+1. Allow incoming connections for Python:
+   - Go to System Preferences > Security & Privacy > Firewall > Firewall Options
+   - Add Python and allow incoming connections
+
+2. Ensure stealth mode doesn't block verification:
+   - If using "Enable stealth mode" in Firewall Options, try temporarily disabling it during testing
+
+##### AVG Security Transparent Proxy
+
+**Required Configuration:**
+1. Temporarily disable the transparent proxy:
+   - Open AVG application
+   - Go to Menu > Preferences > Components
+   - Find "Web Shield" or "HTTPS Scanning" and disable temporarily
+
+2. Add exceptions for localhost connections:
+   - Go to AVG Preferences > Exceptions
+   - Add exceptions for: `127.0.0.1`, `localhost`, `::1` (IPv6 localhost)
+
+##### VPN Software (like ProtonVPN)
+
+**Required Configuration:**
+1. Use Split Tunneling:
+   - Configure your VPN to exclude Python from the tunnel
+   - This allows verification server traffic to bypass the VPN
+
+2. Try disabling VPN entirely during testing
+
+#### Testing Commands
+
+Use these commands to verify your server is functioning properly:
+
+```bash
+# Test local verification server directly
+curl -I http://localhost:8001/api/interactions
+
+# Test signature verification with a sample payload
+curl -X POST http://localhost:8001/api/interactions \
+  -H "Content-Type: application/json" \
+  -H "X-Signature-Ed25519: $(python -c 'print("0"*128)')" \
+  -H "X-Signature-Timestamp: $(date +%s)" \
+  -d '{"type":1}'
+
+# Test a HEAD request (which Discord uses for verification)
+curl -I -X HEAD http://localhost:8001/api/interactions
+
+# Monitor local network traffic on the verification server port
+sudo tcpdump -i lo0 port 8001
+
+# Check if SSH tunnel is properly forwarding
+netstat -tuln | grep 8001
+```
+
+#### Network Interface Issues
+
+If you're having issues with the server binding correctly:
+
+1. Verify the server is binding to the right interface:
+   ```python
+   # Server should bind to either all interfaces or localhost
+   server = HTTPServer(('0.0.0.0', SERVER_PORT), Handler)  # All interfaces
+   # OR
+   server = HTTPServer(('127.0.0.1', SERVER_PORT), Handler)  # Localhost only
+   ```
+
+2. Check available network interfaces:
+   ```bash
+   ifconfig   # macOS/Linux
+   # OR
+   ip addr    # Linux
+   ```
 
 #### Bot Role Setup
 
@@ -517,17 +706,16 @@ If you encounter verification issues with the Discord interaction endpoint, try 
 ### Run Development Script
 
 ```shell
-# Start bot with Cloudflare tunnel
-python start_dev.py
+# Start verification server 
+./run_verification.sh
 ```
 
-Script will:
-1. Create a Cloudflare tunnel and generate a public URL
-2. Update your `.env` file with the tunnel URL
-3. Start the OpenGov bot using the multi-network version
-4. Display instructions for updating your Discord Developer Portal
+### Managing Interaction Commands
 
-When tunnel URL appears, copy it and update your Discord application's URL configuration in Discord Developer Portal > URL Mappings. Bot will then connect to Discord through tunnel. Restart Discord if necessary to apply changes.
+1. Ensure your server is accessible via your domain name
+2. Update your `.env` file with your domain URL
+3. Start the OpenGov bot using the multi-network version
+4. Configure your Discord application's interaction endpoint URL in the Discord Developer Portal > General Information > Interaction Endpoint URL to point to your domain's endpoint (e.g., https://your-domain.com/api/interactions)
 
 Press Ctrl+C when you want to stop.
 
