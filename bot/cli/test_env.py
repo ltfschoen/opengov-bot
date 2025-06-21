@@ -410,20 +410,97 @@ async def run_default_scenario(env):
     )
     print("  - implementer1 successfully added a comment")
 
-    # Simulate votes from dao-team-representatives (should succeed)
-    print("\n5. Testing voting permissions - dao-team-representatives vote (should succeed)")
-    votes = []
-    for rep_name in ["dao_rep1", "dao_rep2", "dao_rep3", "dao_rep4", "dao_rep5"]:
+    # Simulate votes from dao-team-representatives
+    # First add a vote results message at the beginning of the thread (simulating bot's initial message)
+    results_message = await referendum.send(
+        content="👍 AYE: 0    |    👎 NAY: 0    |    ⛔ RECUSE: 0",
+        author=env.users["bot_user"]
+    )
+    print(f"\n5. Added vote results message: {results_message.id}")
+
+    # Setup mock governance monitor to handle button interactions
+    config = mock.MagicMock()
+    config.DISCORD_ROLE = "dao-team-representative"
+    config.ANONYMOUS_MODE = False
+    config.NETWORK_NAME = "polkadot"
+    config.VOTE_COUNTS_FILE = ":memory:"
+
+    env.bot.governance = mock.MagicMock()
+    env.bot.governance.vote_counts = {}
+    env.bot.governance.button_cooldowns = {}
+    env.bot.governance.discord_role = "dao-team-representative"
+    env.bot.governance.config = config
+    env.bot.governance.logger = mock.MagicMock()
+    env.bot.governance.user = env.users["bot_user"]
+
+    # Mock the on_interaction method
+    async def mock_on_interaction(interaction):
+        user_id = interaction.user.id
+        username = interaction.user.name + '#' + (interaction.user.discriminator if hasattr(interaction.user, "discriminator") else "0000")
+        custom_id = interaction.data.get("custom_id")
+        message_id = str(interaction.message.id)
+
+        # Setup vote_counts for this message if not exists
+        if message_id not in env.bot.governance.vote_counts:
+            env.bot.governance.vote_counts[message_id] = {
+                "index": "TEST-1",
+                "title": "Test Referendum",
+                "origin": ["SmallSpender"],
+                "aye": 0,
+                "nay": 0,
+                "recuse": 0,
+                "users": {},
+                "epoch": int(time.time())
+            }
+
+        # Process the vote
+        vote_type = "aye" if custom_id == "aye_button" else "recuse" if custom_id == "recuse_button" else "nay"
+
+        # Check for existing votes
+        if str(user_id) in env.bot.governance.vote_counts[message_id]["users"]:
+            previous_vote = env.bot.governance.vote_counts[message_id]["users"][str(user_id)]["vote_type"]
+
+            # Remove the previous vote
+            if previous_vote != vote_type:
+                env.bot.governance.vote_counts[message_id][previous_vote] -= 1
+
+        # Update vote counts
+        env.bot.governance.vote_counts[message_id][vote_type] += 1
+        env.bot.governance.vote_counts[message_id]["users"][str(user_id)] = {
+            "username": username,
+            "vote_type": vote_type
+        }
+
+        # Send acknowledgment message
+        await interaction.followup.send(
+            f"<@{interaction.user.id}> Your vote of __**{vote_type.upper()}**__ has been successfully registered.",
+            ephemeral=False
+        )
+
+        # Update results message
+        new_results = f"👍 AYE: {env.bot.governance.vote_counts[message_id]['aye']}    |    👎 NAY: {env.bot.governance.vote_counts[message_id]['nay']}    |    ⛔ RECUSE: {env.bot.governance.vote_counts[message_id]['recuse']}"
+        await results_message.edit(content=new_results)
+
+        return True
+
+    env.bot.governance.on_interaction = mock_on_interaction
+
+    # Add votes using button interactions
+    print("\n5. Adding votes from representatives using button interactions:")
+    votes = [
+        ("representative1", "aye_button"),
+        ("representative2", "aye_button"),
+        ("representative3", "nay_button"),
+    ]
+
+    for rep_name, button_id in votes:
         try:
-            vote_message = await env.add_vote_to_referendum(
-                thread=referendum,
-                vote_content=f"!vote {'yes' if rep_name != 'dao_rep3' else 'no'}",
-                author_name=rep_name
+            result = await env.simulate_button_interaction(
+                message_id=results_message.id,
+                custom_id=button_id,
+                user_name=rep_name
             )
-            votes.append(vote_message)
-            print(f"  - {rep_name} successfully voted")
-            # Trigger the bot's message handler
-            await env.bot.trigger_event('on_message', vote_message)
+            print(f"  - {rep_name} successfully voted {button_id.replace('_button', '')}")
             await asyncio.sleep(0.5)
         except Exception as e:
             print(f"  - ERROR: {rep_name} failed to vote: {e}")

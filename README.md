@@ -429,7 +429,7 @@ Follow this step-by-step workflow to set up and test your Discord interaction ve
    # For local testing only as "debug" mode bypasses signature verification
    python verify_endpoint.py --debug 2>&1 | tee discord_verification.log
    ```
-   
+
 4. **For Discord verification, run in production mode**
    ```bash
    # Start your Discord verification server locally on port 8001
@@ -441,7 +441,7 @@ Follow this step-by-step workflow to set up and test your Discord interaction ve
    # OR without the debug flag:
    python verify_endpoint.py 2>&1 | tee discord_verification.log
    ```
-   
+
    > **Important:** When saving the endpoint URL in Discord Developer Portal, the server MUST NOT be running debug mode, or verification will fail.
 
 5. **Create SSH tunnel to your VPS**
@@ -536,12 +536,12 @@ If you encounter verification issues with the Discord interaction endpoint, try 
    python -c "import requests; print(requests.post('http://localhost:8001/api/interactions', json={'type': 1}, headers={'X-Signature-Ed25519': '0'*128, 'X-Signature-Timestamp': '0'}).status_code)"
    ```
    This should return `401` with normal mode (invalid signature) or `200` with debug mode.
-   
+
    Or use the provided test script with either your local server or VPS domain:
    ```bash
    # Test against local server
    ./test_discord_request.sh http://localhost:8001/api/interactions
-   
+
    # Test against your VPS domain (production)
    ./test_discord_request.sh https://your-domain.com/api/interactions
    ```
@@ -706,7 +706,7 @@ If you're having issues with the server binding correctly:
 ### Run Development Script
 
 ```shell
-# Start verification server 
+# Start verification server
 ./run_verification.sh
 ```
 

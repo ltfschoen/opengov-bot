@@ -251,7 +251,7 @@ class DiscordTestEnvironment:
         message.author = author
         return message
 
-    def get_messages_in_channel(self, channel_name):
+    async def get_messages_in_channel(self, channel_name):
         """Get all messages in a channel
 
         Args:
@@ -265,6 +265,81 @@ class DiscordTestEnvironment:
 
         channel = self.channels[channel_name]
         return channel.messages
+
+    async def simulate_button_interaction(self, message_id, custom_id, user_name, channel_id=None):
+        """Simulate a button interaction (like clicking AYE, NAY, or RECUSE buttons).
+
+        Args:
+            message_id (int): The ID of the message containing the button
+            custom_id (str): The custom_id of the button (e.g., "aye_button", "nay_button", "recuse_button")
+            user_name (str): The name of the user clicking the button
+            channel_id (int): The ID of the channel where the interaction occurred
+
+        Returns:
+            dict: Results of the interaction containing success, message, and vote details
+        """
+        from unittest.mock import MagicMock
+
+        user = self.users.get(user_name)
+        if not user:
+            raise ValueError(f"User {user_name} not found")
+
+        # Find the message with the given ID
+        message = None
+        channel = None
+        for channel_name, ch in self.channels.items():
+            if hasattr(ch, "history"):
+                async for msg in ch.history():
+                    if msg.id == message_id:
+                        message = msg
+                        channel = ch
+                        break
+                if message:
+                    break
+
+        if not message:
+            raise ValueError(f"Message with ID {message_id} not found")
+
+        # Import required classes
+        from bot.test.mocks.interaction import MockInteraction
+
+        # Create a mock interaction
+        interaction = MockInteraction(
+            user=user,
+            guild=self.guild,
+            channel_id=channel.id if channel else channel_id,
+            message=message,
+            channel=channel
+        )
+
+        # Set up the data structure for button click
+        interaction.data = {
+            "component_type": 2,  # Button type
+            "custom_id": custom_id
+        }
+
+        # If we have a bot instance with a governance attribute, call its on_interaction method
+        if hasattr(self, "bot") and self.bot and hasattr(self.bot, "governance") and self.bot.governance:
+            try:
+                await self.bot.governance.on_interaction(interaction)
+
+                # If we have vote counts, return them
+                if hasattr(self.bot.governance, "vote_counts"):
+                    vote_counts = self.bot.governance.vote_counts.get(str(message_id), {})
+
+                    return {
+                        "success": True,
+                        "user": user_name,
+                        "vote_type": custom_id.replace("_button", ""),  # Convert "aye_button" to "aye"
+                        "vote_counts": vote_counts
+                    }
+
+                return {"success": True, "message": "Interaction processed"}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+        else:
+            # If no governance handler, just return success with mock data
+            return {"success": True, "message": "Button interaction simulated but no handler available"}
 
     def patch_discord_modules(self):
         """Patch Discord modules to use our mocks

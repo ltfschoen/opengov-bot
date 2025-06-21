@@ -8,18 +8,22 @@ from unittest.mock import MagicMock
 class MockInteraction:
     """Mock implementation of a Discord Interaction object."""
 
-    def __init__(self, user, guild, channel=None):
+    def __init__(self, user, guild, channel_id=None, message=None, channel=None):
         """
         Initialize a mock interaction.
 
         Args:
             user (MockUser): The user who triggered the interaction
             guild (MockGuild): The guild where the interaction was triggered
+            channel_id (int, optional): The ID of the channel where the interaction was triggered
+            message (MockMessage, optional): The message that was interacted with (for button interactions)
             channel (MockTextChannel or MockThread, optional): The channel where the interaction was triggered
         """
         self.user = user
         self.guild = guild
         self.channel = channel
+        self.channel_id = channel_id
+        self.message = message
 
         # Create mock response and followup objects
         self.response = MagicMock()

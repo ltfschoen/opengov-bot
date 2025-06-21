@@ -240,7 +240,7 @@ class TestBotIntegration(AsyncTestCase):
                                           author_name="dao-rep")
 
             # Check messages in the public-discussions channel (where voting happens)
-            voting_messages = self.env.get_messages_in_channel("public-discussions")
+            voting_messages = await self.env.get_messages_in_channel("public-discussions")
             self.assertTrue(len(voting_messages) > 0, "No messages found in public-discussions channel")
 
             # Stop all tasks
@@ -347,14 +347,14 @@ class TestBotIntegration(AsyncTestCase):
                                           author_name="test_user")
 
             # Check that the bot responded
-            messages = self.env.get_messages_in_channel("general")
+            messages = await self.env.get_messages_in_channel("general")
             self.assertTrue(len(messages) > 0, "No messages found in general channel")
 
             # Since we're mocking, we need to manually add a response message
             await self.env.channels["general"].send(content="Test command executed!")
 
             # Check again for the response
-            messages = self.env.get_messages_in_channel("general")
+            messages = await self.env.get_messages_in_channel("general")
             self.assertIn("Test command executed!", [m.content for m in messages])
 
             # Stop tasks

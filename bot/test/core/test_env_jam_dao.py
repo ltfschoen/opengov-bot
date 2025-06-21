@@ -152,6 +152,97 @@ class JamDaoDiscordTestEnvironment(DiscordTestEnvironment):
 
         return (votes_count / len(eligible_users)) * 100.0
 
+    async def simulate_button_interaction(self, message_id, custom_id, user_name="dao_rep1", channel_id=None):
+        """
+        Simulate a button interaction (like clicking AYE, NAY, or RECUSE buttons).
+
+        Args:
+            message_id (int): The ID of the message containing the button
+            custom_id (str): The custom_id of the button (e.g., "aye_button", "nay_button", "recuse_button")
+            user_name (str): The name of the user clicking the button
+            channel_id (int): The ID of the channel where the interaction occurred
+
+        Returns:
+            dict: Results of the interaction containing success, message, and vote details
+        """
+        user = self.users.get(user_name)
+        if not user:
+            raise ValueError(f"User {user_name} not found")
+
+        # Check if the user has permission to vote (similar to add_vote_to_referendum method)
+        has_vote_permission = False
+        for role in user.roles:
+            if role.name in ["dao-team-representative", "Admin"]:
+                has_vote_permission = True
+                break
+
+        if not has_vote_permission:
+            return {
+                "success": False,
+                "error": f"User {user_name} does not have permission to vote. Only users with dao-team-representative role can vote."
+            }
+
+        # Find the message with the given ID
+        message = None
+        channel = None
+        for channel_name, ch in self.channels.items():
+            if hasattr(ch, "history"):
+                async for msg in ch.history():
+                    if msg.id == message_id:
+                        message = msg
+                        channel = ch
+                        break
+                if message:
+                    break
+
+        if not message:
+            return {
+                "success": False,
+                "error": f"Message with ID {message_id} not found"
+            }
+
+        # Create a mock interaction
+        interaction = MockInteraction(
+            user=user,
+            guild=self.guild,
+            channel_id=channel.id if channel else channel_id,
+            message=message
+        )
+
+        # Set up the data structure for button click
+        interaction.data = {
+            "component_type": 2,  # Button type
+            "custom_id": custom_id
+        }
+
+        # Setup message to extract thread info
+        discord_thread = message.channel
+
+        # If we have a GovernanceMonitor in the bot, call its on_interaction method
+        if hasattr(self.bot, "governance") and self.bot.governance:
+            try:
+                await self.bot.governance.on_interaction(interaction)
+
+                # After interaction, get the vote counts for this message ID
+                vote_counts = self.bot.governance.vote_counts.get(str(message_id), {})
+
+                return {
+                    "success": True,
+                    "user": user_name,
+                    "vote_type": custom_id.replace("_button", ""),  # Convert "aye_button" to "aye"
+                    "vote_counts": vote_counts
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e)
+                }
+        else:
+            return {
+                "success": False,
+                "error": "Bot does not have a governance monitor"
+            }
+
     async def simulate_slash_command(self, command_name, options=None, user_name=None, thread_id=None, channel_name=None, public_thread=None):
         """
         Simulate a slash command execution in the test environment.
