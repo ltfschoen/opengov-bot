@@ -1124,6 +1124,209 @@ When the bot votes is dictated by `/data/vote_periods`. Each origin of a proposa
 
 ---
 
+## Database Access
+
+### Database Configuration
+
+The bot stores referenda vote counts and user votes in PostgreSQL. The database connection is configured using the `DB_`-prefixed environment variables in your `.env` file:
+
+### Using the CLI Database Viewer
+
+A CLI tool is provided to quickly view database content. You'll find it at `bot/cli/view_database.py`.
+
+```bash
+# Basic usage
+python bot/cli/view_database.py
+
+# View all threads including archived
+python bot/cli/view_database.py --all
+
+# View details of a specific thread
+python bot/cli/view_database.py --thread THREAD_ID
+
+# Show vote statistics
+python bot/cli/view_database.py --summary
+
+# Get help
+python bot/cli/view_database.py --help
+```
+
+### Database Access with Docker
+
+#### Starting PostgreSQL with Docker Compose
+
+The OpenGov Bot provides Docker Compose configurations for both single-network and multi-network modes, which include PostgreSQL:
+
+```bash
+# For single network mode
+docker-compose -f docker-compose.single.yaml up -d
+
+# For multi-network mode
+docker-compose -f docker-compose.multi.yaml up -d
+```
+
+#### Accessing PostgreSQL in the Docker Container
+
+1. **Connect to the PostgreSQL container:**
+
+```bash
+docker-compose -f docker-compose.single.yaml exec db psql -U $DB_USER -d $DB_NAME
+```
+
+2. **Copy a query script into the container and run it:**
+
+Create a query script (e.g., `vote_query.sql`):
+
+```sql
+-- vote_query.sql
+SELECT rt.thread_id, rt.aye, rt.nay, rt.recuse, rt.abstain
+FROM referenda_thread rt
+WHERE rt.archived = FALSE
+ORDER BY rt.epoch DESC;
+```
+
+Copy and execute the script:
+
+```bash
+# Copy the script to the container
+docker cp vote_query.sql opengov-bot_db_1:/tmp/
+
+# Run the script
+docker-compose -f docker-compose.single.yaml exec db psql -U $DB_USER -d $DB_NAME -f /tmp/vote_query.sql
+```
+
+#### Running Python Scripts in the Bot Container
+
+You can run Python scripts that query the database directly in the bot container:
+
+```bash
+# Create a simple query script
+cat > check_votes.py << 'EOL'
+import psycopg2
+import os
+
+# Use container networking - the hostname 'db' refers to the PostgreSQL service
+conn = psycopg2.connect(
+    dbname=os.environ.get('DB_NAME'),
+    user=os.environ.get('DB_USER'),
+    password=os.environ.get('DB_PASSWORD'),
+    host='db',  # Use service name from docker-compose
+    port=5432
+)
+
+cursor = conn.cursor()
+
+# Get latest vote counts
+cursor.execute("""
+    SELECT rt.thread_id, rt.aye, rt.nay, rt.recuse 
+    FROM referenda_thread rt 
+    WHERE rt.archived = FALSE 
+    ORDER BY rt.epoch DESC 
+    LIMIT 5
+""")
+
+print("\n=== LATEST VOTE COUNTS ===")
+print("Thread ID | Aye | Nay | Recuse")
+print("-" * 35)
+
+for row in cursor.fetchall():
+    thread_id, aye, nay, recuse = row
+    print(f"{thread_id} | {aye} | {nay} | {recuse}")
+
+cursor.close()
+conn.close()
+EOL
+
+# Copy the script to the bot container
+docker cp check_votes.py opengov-bot_bot_1:/app/
+
+# Run the script in the container
+docker-compose -f docker-compose.single.yaml exec bot python /app/check_votes.py
+```
+
+### Direct Database Query Example
+
+For local development, you can use this Python script to query the database:
+
+```python
+#!/usr/bin/env python3
+import psycopg2
+import os
+from dotenv import load_dotenv
+
+# Load database connection parameters from environment variables
+load_dotenv()
+
+# Database connection parameters
+db_params = {
+    'dbname': os.getenv('DB_NAME', 'opengov_bot'),
+    'user': os.getenv('DB_USER', 'postgres'),
+    'password': os.getenv('DB_PASSWORD', ''),
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': os.getenv('DB_PORT', '5432')
+}
+
+# Connect to the database
+conn = psycopg2.connect(**db_params)
+cursor = conn.cursor()
+
+# Example 1: View all referendum threads
+print("\n== Referendum Threads ==")
+cursor.execute("SELECT thread_id, aye, nay, recuse, abstain, epoch, archived FROM referenda_thread;")
+threads = cursor.fetchall()
+for thread in threads:
+    print(f"Thread ID: {thread[0]}")
+    print(f"Votes: Aye={thread[1]}, Nay={thread[2]}, Recuse={thread[3]}, Abstain={thread[4]}")
+    print(f"Epoch: {thread[5]}, Archived: {thread[6]}")
+    print("---")
+
+# Example 2: View all user votes for a specific thread
+thread_id = input("\nEnter thread ID to view votes (or press Enter to skip): ")
+if thread_id:
+    print(f"\n== Votes for Thread {thread_id} ==")
+    cursor.execute("""
+        SELECT u.username, vo.description 
+        FROM users u 
+        JOIN vote_options vo ON u.vote_type = vo.vote_id 
+        WHERE u.thread_id = %s;
+    """, (thread_id,))
+    votes = cursor.fetchall()
+    for vote in votes:
+        print(f"User: {vote[0]}, Vote: {vote[1]}")
+
+# Example 3: Count votes by type across all threads
+print("\n== Vote Summary ==")
+cursor.execute("""
+    SELECT vo.description, COUNT(*) 
+    FROM users u 
+    JOIN vote_options vo ON u.vote_type = vo.vote_id 
+    GROUP BY vo.description;
+""")
+vote_counts = cursor.fetchall()
+for vote_type in vote_counts:
+    print(f"{vote_type[0]}: {vote_type[1]}")
+
+# Close the connection
+cursor.close()
+conn.close()
+```
+
+## TODO
+
+### Environment Variable Cleanup for Multi-Network Support
+
+The following environment variables in `.env.sample` and `.env` files should be removed and their functionality incorporated to use the networks defined in `/data/networks.json` instead:
+
+- [ ] `NETWORK_NAME` - Should be derived from selected network in networks.json
+- [ ] `SYMBOL` - Should be derived from selected network in networks.json
+- [ ] `TOKEN_DECIMAL` - Should be derived from selected network in networks.json
+- [ ] `SUBSTRATE_WSS` - Should be derived from selected network in networks.json
+- [ ] `PEOPLE_WSS` - Should be derived from selected network in networks.json
+
+The multi-network architecture already supports configuring these values in the networks.json file, and having them duplicated in the .env file creates potential for configuration conflicts.
+
+Note that if legacy single network support is removed then it may be necessary to remove the main.py file and use only main_multi_network.py instead.
+
 ## Support
 For assistance or inquiries, please refer to the following official channels of communication:
 
