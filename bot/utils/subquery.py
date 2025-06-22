@@ -161,29 +161,42 @@ class SubstrateAPI:
             return None
 
     async def proxy_balance(self):
+        """
+        Check the balance of the account that will be used for signing transactions.
+        - If PROXY_ADDRESS is provided, check its balance
+        - If not, check the PROXIED_ADDRESS balance (direct signing mode)
+
+        Returns:
+            float: The free balance in token units (not raw balance)
+        """
         try:
             await self.connect(self.config.SUBSTRATE_WSS)
 
-            self.logger.info(f"Checking balance of proxy account: {self.config.PROXY_ADDRESS}")
+            # Determine which address to check based on whether we're using a proxy
+            use_proxy = self.config.PROXY_ADDRESS and self.config.PROXY_ADDRESS.strip() != ''
+            check_address = self.config.PROXY_ADDRESS if use_proxy else self.config.PROXIED_ADDRESS
+            address_type = "proxy" if use_proxy else "signing"
 
-            # Fetch the balance using the same logic as the updated balance function
-            proxy_balance = await self.balance(ss58_address=self.config.PROXY_ADDRESS)
+            self.logger.info(f"Checking balance of {address_type} account: {check_address}")
+
+            # Fetch the balance
+            account_balance = await self.balance(ss58_address=check_address)
 
             # Convert the balance to a float with the correct token decimal scaling
-            proxy_balance = proxy_balance / float(self.config.TOKEN_DECIMAL)
+            account_balance = account_balance / float(self.config.TOKEN_DECIMAL)
 
             # Ensure that the returned balance is a float
-            if isinstance(proxy_balance, float):
-                return proxy_balance
+            if isinstance(account_balance, float):
+                return account_balance
             else:
                 raise ValueError("Balance is not a float")
 
         except asyncio.TimeoutError:
-            self.logger.error("Timeout while fetching proxy balance.")
+            self.logger.error("Timeout while fetching account balance.")
             raise
 
         except Exception as error:
-            self.logger.error(f"Error fetching proxy balance: {error}")
+            self.logger.error(f"Error fetching account balance: {error}")
             raise
 
     async def compose_democracy_vote_call(self, proposal_index, vote_type, conviction, ongoing_referendas):
@@ -362,6 +375,9 @@ class SubstrateAPI:
         """
         Execute a batch of calls.
 
+        If a PROXY_ADDRESS is provided, it will execute the call through a proxy.
+        Otherwise, it will execute the call directly using the PROXIED_ADDRESS and MNEMONIC.
+
         Args:
             calls (list): A list of calls to execute.
         """
@@ -371,12 +387,23 @@ class SubstrateAPI:
             self.logger.info("Attempting to execute batch of calls.")
             batch_call = await self.compose_utility_batch_call(calls)
             self.logger.info("Utility_batch_call complete")
-            proxy_call = await self.compose_proxy_call(batch_call)
-            self.logger.info("Proxy call complete")
+
+            # Determine whether to use proxy or direct signing
+            use_proxy = self.config.PROXY_ADDRESS and self.config.PROXY_ADDRESS.strip() != ''
+
+            if use_proxy:
+                self.logger.info("Using proxy voting with governance proxy")
+                final_call = await self.compose_proxy_call(batch_call)
+                self.logger.info("Proxy call complete")
+            else:
+                self.logger.info("Using direct voting with account mnemonic")
+                final_call = batch_call
+
+            # Create and sign the extrinsic
             extrinsic = await asyncio.wait_for(
                 asyncio.to_thread(
                     self.substrate.create_signed_extrinsic,
-                    call=proxy_call,
+                    call=final_call,
                     keypair=Keypair.create_from_mnemonic(self.config.MNEMONIC)
                 ),
                 timeout=60

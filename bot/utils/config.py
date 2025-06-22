@@ -43,7 +43,8 @@ class Config:
             # Wallet Settings
             self.SOLO_MODE = bool(strtobool(os.getenv('SOLO_MODE', ''))) if os.getenv('SOLO_MODE') is not None else self.raise_error("Missing SOLO_MODE")
             self.PROXIED_ADDRESS = os.getenv('PROXIED_ADDRESS') or self.raise_error("Missing PROXIED_ADDRESS")
-            self.PROXY_ADDRESS = os.getenv('PROXY_ADDRESS') or self.raise_error("Missing PROXY_ADDRESS")
+            # Make PROXY_ADDRESS optional - it can be empty for direct signing mode
+            self.PROXY_ADDRESS = os.getenv('PROXY_ADDRESS', '')
             self.MNEMONIC = os.getenv('MNEMONIC') or self.raise_error("Missing MNEMONIC")
             self.VOTE_WITH_BALANCE = float(os.getenv('VOTE_WITH_BALANCE') or self.raise_error("Missing VOTE_WITH_BALANCE"))
             self.CONVICTION = os.getenv('CONVICTION') or self.raise_error("Missing CONVICTION")

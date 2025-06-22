@@ -1124,6 +1124,38 @@ When the bot votes is dictated by `/data/vote_periods`. Each origin of a proposa
 
 ---
 
+## Proxy Accounts
+
+### Proxy Account Requirements in Polkadot/Kusama
+If you get a "LiquidityRestrictions" error it is likely because the proxy account itself needs to maintain an existential deposit (ED), a minimum balance to exist on the network.
+
+### Proxy Account Balance Requirements
+
+The proxy account (not just the proxied account) must have the network's existential deposit:
+- On Polkadot: You need at least 1 DOT in the proxy account
+- On Kusama: You need at least 0.0000333333 KSM in the proxy account
+
+Network-specific requirements:
+- You only need DOT for a Polkadot proxy
+- You only need KSM for a Kusama proxy
+
+Each parachain would have its own native token requirements
+
+### Pure Proxy vs Regular Proxy
+
+Pure proxy is more economical:
+
+Pure Proxy advantages:
+- It's cheaper to create (about 0.0336 DOT on Polkadot)
+- It still requires the existential deposit
+- It can only be used as a proxy (cannot have other functionality)
+
+Proxy Filtering:
+- You can indeed restrict proxies to specific transaction types
+- For governance-only operations, use the "Governance" proxy type
+
+---
+
 ## Database Access
 
 ### Database Configuration
@@ -1218,10 +1250,10 @@ cursor = conn.cursor()
 
 # Get latest vote counts
 cursor.execute("""
-    SELECT rt.thread_id, rt.aye, rt.nay, rt.recuse 
-    FROM referenda_thread rt 
-    WHERE rt.archived = FALSE 
-    ORDER BY rt.epoch DESC 
+    SELECT rt.thread_id, rt.aye, rt.nay, rt.recuse
+    FROM referenda_thread rt
+    WHERE rt.archived = FALSE
+    ORDER BY rt.epoch DESC
     LIMIT 5
 """)
 
@@ -1285,9 +1317,9 @@ thread_id = input("\nEnter thread ID to view votes (or press Enter to skip): ")
 if thread_id:
     print(f"\n== Votes for Thread {thread_id} ==")
     cursor.execute("""
-        SELECT u.username, vo.description 
-        FROM users u 
-        JOIN vote_options vo ON u.vote_type = vo.vote_id 
+        SELECT u.username, vo.description
+        FROM users u
+        JOIN vote_options vo ON u.vote_type = vo.vote_id
         WHERE u.thread_id = %s;
     """, (thread_id,))
     votes = cursor.fetchall()
@@ -1297,9 +1329,9 @@ if thread_id:
 # Example 3: Count votes by type across all threads
 print("\n== Vote Summary ==")
 cursor.execute("""
-    SELECT vo.description, COUNT(*) 
-    FROM users u 
-    JOIN vote_options vo ON u.vote_type = vo.vote_id 
+    SELECT vo.description, COUNT(*)
+    FROM users u
+    JOIN vote_options vo ON u.vote_type = vo.vote_id
     GROUP BY vo.description;
 """)
 vote_counts = cursor.fetchall()
@@ -1312,6 +1344,48 @@ conn.close()
 ```
 
 ## TODO
+
+#### Web-Based Decentralized OpenGov Application
+
+To transform the OpenGov Bot into a decentralized autonomous application with a web interface:
+
+1. API Extraction and Service Layer:
+   - Refactor core governance monitoring logic into a standalone API service
+   - Create a clean separation between business logic and Discord-specific code
+   - Expose monitoring capabilities, referendum tracking, and voting via REST/GraphQL endpoints
+   - Leverage the existing NetworkManager and MultiNetworkHandler components as service foundations
+
+2. Web Frontend Development:
+   - Create a modern, responsive web interface using a framework like React or Vue
+   - Implement real-time updates using WebSockets or server-sent events
+   - Design intuitive dashboards for referendum monitoring across multiple networks
+   - Add interactive voting interfaces with proper UX for governance participation
+   - Integrate with wallets like Polkadot.js, Talisman, or SubWallet for transaction signing
+
+3. Decentralization Strategy:
+   - Implement IPFS-based content storage for referendum descriptions and discussions
+   - Create options for self-hosting the monitoring node with simplified setup
+   - Consider integration with decentralized identity solutions
+   - Explore options for hosting critical infrastructure on decentralized compute platforms
+
+4. Testing and Quality Assurance:
+   - Reuse existing test infrastructure by adapting it to the API context
+   - Implement comprehensive frontend tests with tools like Cypress or Playwright
+   - Create end-to-end governance workflow tests that validate the entire stack
+   - Develop cross-browser and cross-device testing strategies
+
+5. Migration Path and Compatibility:
+   - Maintain backwards compatibility with Discord for a transition period
+   - Create documentation for users migrating from Discord to web interface
+   - Develop a hybrid deployment option where both interfaces are supported
+
+6. Security Considerations:
+   - Adapt the secure mnemonic handling to work in a web context (consider MetaMask-style approach)
+   - Implement proper authentication and authorization systems
+   - Create audit logging for all governance actions
+   - Consider open-sourcing the security model for community review
+
+This transformation would preserve the value of the existing codebase while providing greater autonomy, improved user experience, and reduced dependency on centralized platforms.
 
 ### Environment Variable Cleanup for Multi-Network Support
 
@@ -1327,7 +1401,7 @@ The multi-network architecture already supports configuring these values in the 
 
 Note that if legacy single network support is removed then it may be necessary to remove the main.py file and use only main_multi_network.py instead.
 
-## Support
+## Support 
 For assistance or inquiries, please refer to the following official channels of communication:
 
 ### JAM DAO
