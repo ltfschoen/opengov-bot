@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 from bot.utils.logger import Logger
 from bot.utils.string_utils import strtobool
+from .polkadot_auth import PolkadotAuth
 import os
 import json
 
@@ -17,6 +18,8 @@ class Config:
                 print("Warning: No .env file found in either current directory or parent directory")
 
             self.logger = Logger()
+            self.polkadot_auth = None
+            self.connected_account = None
 
             # Discord Settings
             self.DISCORD_API_KEY = os.getenv('DISCORD_API_KEY') or self.raise_error("Missing DISCORD_API_KEY")
@@ -45,7 +48,12 @@ class Config:
             self.PROXIED_ADDRESS = os.getenv('PROXIED_ADDRESS') or self.raise_error("Missing PROXIED_ADDRESS")
             # Make PROXY_ADDRESS optional - it can be empty for direct signing mode
             self.PROXY_ADDRESS = os.getenv('PROXY_ADDRESS', '')
-            self.MNEMONIC = os.getenv('MNEMONIC') or self.raise_error("Missing MNEMONIC")
+            self.USE_POLKADOT_JS = bool(strtobool(os.getenv('USE_POLKADOT_JS', 'false')))
+            if not self.USE_POLKADOT_JS:
+                self.MNEMONIC = os.getenv('MNEMONIC') or self.raise_error("Missing MNEMONIC")
+            else:
+                self.MNEMONIC = None
+                self.setup_polkadot_auth()
             self.VOTE_WITH_BALANCE = float(os.getenv('VOTE_WITH_BALANCE') or self.raise_error("Missing VOTE_WITH_BALANCE"))
             self.CONVICTION = os.getenv('CONVICTION') or self.raise_error("Missing CONVICTION")
             self.DISCORD_PROXY_BALANCE_ALERT = int(os.getenv('DISCORD_PROXY_BALANCE_ALERT') or self.raise_error("Missing DISCORD_PROXY_BALANCE_ALERT"))
@@ -55,6 +63,31 @@ class Config:
 
         except ValueError as e:
             print(f"Error: {e}")
+
+    def setup_polkadot_auth(self):
+        """Initialize the Polkadot.js authentication server"""
+        if not self.polkadot_auth:
+            self.polkadot_auth = PolkadotAuth(self)
+            # Start in a separate thread to avoid blocking
+            import threading
+            import webbrowser
+
+            def start_auth_server():
+                self.polkadot_auth.run()
+
+            threading.Thread(
+                target=start_auth_server,
+                daemon=True
+            ).start()
+
+            # Open browser automatically
+            import time
+            time.sleep(1.5)  # Give server time to start
+            webbrowser.open(self.polkadot_auth.get_auth_url())
+
+            self.logger.info(f"Polkadot.js auth server started at {self.polkadot_auth.get_auth_url()}")
+            self.logger.info("Health check available at: http://localhost:5000/health")
+            self.logger.info("Please connect your Polkadot.js extension in the browser window")
 
     def initialize_environment_files(self):
         """

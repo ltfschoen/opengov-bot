@@ -1,4 +1,4 @@
-from utils.logger import Logger
+from bot.utils.logger import Logger
 
 
 class PermissionCheck:

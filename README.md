@@ -342,10 +342,37 @@ The OpenGov bot uses Discord roles to determine permissions for different action
 
 Customize these role names to fit the server's needs, but make sure to update the corresponding environment variables in your `.env` file.
 
+### Discord Server Setup
+
+#### Enable Community Features
+Before setting up the #referendas channel, you must enable Community features on your Discord server:
+
+1. Open Server Settings (click on your server name in the top-left)
+2. Navigate to "Community" in the left sidebar
+3. Click "Get Started" or "Enable Community"
+4. Follow the setup process (email verification, rules setup, etc.)
+5. Complete the setup to convert your server to a Community server
+
+#### Create the #referendas Forum Channel
+The bot requires a Forum channel (not a regular Text channel) to post referenda:
+
+1. Click the "+" icon next to your server's channel categories
+2. Select "Forum" as the channel type (only available after enabling Community)
+3. Name it "referendas" (or your preferred name)
+4. Configure the following settings:
+   - **Post Guidelines**: "Bot will be posting new referendas here"
+   - **Tags**: Create the following tags (these match the governance tracks):
+     ```
+     MediumSpender, BigSpender, Root, SmallSpender, WhitelistedCaller, 
+     Treasurer, BigTipper, SmallTipper, GeneralAdmin, ReferendumCanceller, 
+     WishForChange, ReferendumKiller
+     ```
+5. Set appropriate permissions for the channel
+6. Copy the channel ID (right-click > Copy ID) and add it to your `.env` file as `DISCORD_FORUM_CHANNEL_ID`
+
 ### Discord Bot Setup
 
 #### Discord Developer Portal Configuration
-
 1. **OAuth2 > URL Generator**:
    - Under "Scopes", you **must** select both:
      - `bot` (allows the bot to join servers)
@@ -425,36 +452,36 @@ Follow this step-by-step workflow to set up and test your Discord interaction ve
    - Ensure DISCORD_PUBLIC_KEY is set properly in your `.env` file
 
 3. **Testing locally with "debug" mode**
-   ```bash
-   # For local testing only as "debug" mode bypasses signature verification
-   python verify_endpoint.py --debug 2>&1 | tee discord_verification.log
-   ```
+```bash
+# For local testing only as "debug" mode bypasses signature verification
+python verify_endpoint.py --debug 2>&1 | tee discord_verification.log
+```
 
 4. **For Discord verification, run in production mode**
-   ```bash
-   # Start your Discord verification server locally on port 8001
-   # For actual Discord verification when saving Interactions Endpoint URL in Discord Developer Portal with proper signature verification enabled
-   ./run_verification.sh
+```bash
+# Start your Discord verification server locally on port 8001
+# For actual Discord verification when saving Interactions Endpoint URL in Discord Developer Portal with proper signature verification enabled
+./run_verification.sh
 
-   # Wait for SSH tunnel to be established
+# Wait for SSH tunnel to be established
 
-   # OR without the debug flag:
-   python verify_endpoint.py 2>&1 | tee discord_verification.log
-   ```
+# OR without the debug flag:
+python verify_endpoint.py 2>&1 | tee discord_verification.log
+```
 
    > **Important:** When saving the endpoint URL in Discord Developer Portal, the server MUST NOT be running debug mode, or verification will fail.
 
 5. **Create SSH tunnel to your VPS**
-   ```bash
-   # In another terminal connect to your VPS via SSH tunnel to forward requests
-   ./connect_to_vps.sh
-   ```
+```bash
+# In another terminal connect to your VPS via SSH tunnel to forward requests
+./connect_to_vps.sh
+```
 
 6. **Test the endpoint locally first**
-   ```bash
-   # Test with the provided script
-   ./test_discord_request.sh
-   ```
+```bash
+# Test with the provided script
+./test_discord_request.sh
+```
 
 7. **Set the Interactions Endpoint URL in Discord Developer Portal**
    - Go to your application in the Discord Developer Portal
@@ -464,9 +491,9 @@ Follow this step-by-step workflow to set up and test your Discord interaction ve
 
 8. **Monitor the Nginx server logs on VPS for activity**
    - Watch your local verification server logs
-   ```bash
-   sudo tail -f /var/log/nginx/error.log
-   ```
+```bash
+sudo tail -f /var/log/nginx/error.log
+```
 
 This setup:
 - Uses a secure HTTPS endpoint required by Discord
@@ -508,6 +535,13 @@ If you're experiencing issues with Discord endpoint verification, follow these s
    - Ensure your Nginx configuration is correctly forwarding to your verification server port
    - Test your domain URL directly in a browser: `https://your-domain.com/api/interactions`
    - You should see a response from your verification server
+
+5. **CORS Support**: The verification server now includes proper CORS headers to support cross-origin requests from Discord:
+   - Handles OPTIONS preflight requests
+   - Includes appropriate Access-Control-Allow headers
+   - You can see detailed logs of these requests in the server output
+
+6. **Multiple Endpoints**: While Discord officially uses `/api/interactions`, our server also supports `/interactions`, `/api/discord/interactions`, and `/discord/interactions` for flexibility during testing.
 
 #### Troubleshooting Verification Issues
 
@@ -568,232 +602,6 @@ If you encounter verification issues with the Discord interaction endpoint, try 
    - You can see detailed logs of these requests in the server output
 
 11. **Multiple Endpoints**: While Discord officially uses `/api/interactions`, our server also supports `/interactions`, `/api/discord/interactions`, and `/discord/interactions` for flexibility during testing.
-
-### Advanced Troubleshooting
-
-#### Security Software Configuration
-
-Security software can interfere with Discord interactions. Check the following:
-
-##### macOS Built-in Firewall
-
-**Required Configuration:**
-1. Allow incoming connections for Python:
-   - Go to System Preferences > Security & Privacy > Firewall > Firewall Options
-   - Add Python and allow incoming connections
-
-2. Ensure stealth mode doesn't block verification:
-   - If using "Enable stealth mode" in Firewall Options, try temporarily disabling it during testing
-
-##### AVG Security Transparent Proxy
-
-**Required Configuration:**
-1. Temporarily disable the transparent proxy:
-   - Open AVG application
-   - Go to Menu > Preferences > Components
-   - Find "Web Shield" or "HTTPS Scanning" and disable temporarily
-
-2. Add exceptions for localhost connections:
-   - Go to AVG Preferences > Exceptions
-   - Add exceptions for: `127.0.0.1`, `localhost`, `::1` (IPv6 localhost)
-
-##### VPN Software (like ProtonVPN)
-
-**Required Configuration:**
-1. Use Split Tunneling:
-   - Configure your VPN to exclude Python from the tunnel
-   - This allows verification server traffic to bypass the VPN
-
-2. Try disabling VPN entirely during testing
-
-#### Testing Commands
-
-Use these commands to verify your server is functioning properly:
-
-```bash
-# Test local verification server directly
-curl -I http://localhost:8001/api/interactions
-
-# Test signature verification with a sample payload
-curl -X POST http://localhost:8001/api/interactions \
-  -H "Content-Type: application/json" \
-  -H "X-Signature-Ed25519: $(python -c 'print("0"*128)')" \
-  -H "X-Signature-Timestamp: $(date +%s)" \
-  -d '{"type":1}'
-
-# Test a HEAD request (which Discord uses for verification)
-curl -I -X HEAD http://localhost:8001/api/interactions
-
-# Monitor local network traffic on the verification server port
-sudo tcpdump -i lo0 port 8001
-
-# Check if SSH tunnel is properly forwarding
-netstat -tuln | grep 8001
-```
-
-#### Network Interface Issues
-
-If you're having issues with the server binding correctly:
-
-1. Verify the server is binding to the right interface:
-   ```python
-   # Server should bind to either all interfaces or localhost
-   server = HTTPServer(('0.0.0.0', SERVER_PORT), Handler)  # All interfaces
-   # OR
-   server = HTTPServer(('127.0.0.1', SERVER_PORT), Handler)  # Localhost only
-   ```
-
-2. Check available network interfaces:
-   ```bash
-   ifconfig   # macOS/Linux
-   # OR
-   ip addr    # Linux
-   ```
-
-#### Bot Role Setup
-
-1. **Manual Role Adjustment**:
-   - After adding the bot, you can find its role in Server Settings > Roles
-   - The role will have the same name as your bot
-   - You can manually adjust its permissions if needed
-   - Ensure the bot role is positioned higher in the role hierarchy than any roles it needs to manage
-
-#### Channel Permission Setup
-
-1. **Forum Channel (#referendas)**:
-   - **Set up as a Private Channel**:
-     - Right-click the channel > Edit Channel > Permissions
-     - Remove access for @everyone (set all permissions to ❌)
-   - **Add specific roles with permissions**:
-     - `JAM-DAO-Bot` (the bot's role):
-       - **General Permissions**:
-         - Manage Roles
-         - View Channel
-         - Manage Channels (for forum tags)
-         - Manage Webhooks
-         - Manage Expressions (for emoji reactions)
-       - **Text Permissions**:
-         - Send Messages
-         - Send Messages in Threads
-         - Create Public Threads
-         - Create Private Threads
-         - Embed Links
-         - Attach Files
-         - Add Reactions
-         - Use External Emoji
-         - Mention @everyone, @here, and All Roles
-         - Manage Messages (for pinning)
-         - Manage Threads
-         - Read Message History
-         - Use Application Commands
-     - `Admin`: View Channel, Send Messages, Add Reactions, Create Public Threads
-     - `DOT-GOV`: View Channel, Send Messages, Add Reactions
-   - **Optional additional roles** (if you want to allow these roles access):
-     - `dao-team-representative`: View Channel, Send Messages, Add Reactions
-     - `dao-participant`: View Channel, Send Messages
-
-2. **Public Discussions Channel**:
-   - Configure similar to the forum channel, but doesn't need thread management
-
-3. **Summarizer Channel**:
-   - Ensure the bot has Send Messages and Embed Links permissions
-
-4. **Private Channels**:
-   - For channels like `coordination-representatives` that should be restricted:
-     - Remove access for @everyone
-     - Add specific roles (e.g., `@dao-team-representative`) with appropriate permissions
-
-### Run Development Script
-
-```shell
-# Start verification server
-./run_verification.sh
-```
-
-### Managing Interaction Commands
-
-1. Ensure your server is accessible via your domain name
-2. Update your `.env` file with your domain URL
-3. Start the OpenGov bot using the multi-network version
-4. Configure your Discord application's interaction endpoint URL in the Discord Developer Portal > General Information > Interaction Endpoint URL to point to your domain's endpoint (e.g., https://your-domain.com/api/interactions)
-
-Press Ctrl+C when you want to stop.
-
-### Testing Bot Functionality
-
-After the bot is running with the development script, test its functionality in Discord:
-
-#### Required Channel Setup
-
-- **Forum Channel**: The bot requires a Discord forum channel to post referenda. You must create this channel manually and set its ID in your `.env` file as `DISCORD_FORUM_CHANNEL_ID`.
-- **Regular Channels**: Slash commands can be used in any text channel where the bot has permission to read and send messages.
-- **Optional Summarizer Channel**: If you want to use the summarization feature, create a regular text channel and set its ID in your `.env` file as `DISCORD_SUMMARIZER_CHANNEL_ID`.
-
-The bot does NOT automatically create any channels - you must set up the required channels beforehand.
-
-#### Forum Channel Tags
-
-For the multi-network bot, forum tags are automatically created by the bot as needed. However, there are several benefits to setting up the most common tags manually in advance:
-
-1. **Custom Colors**: When you create tags manually, you can assign network-specific colors (e.g., Polkadot pink, Kusama black)
-2. **Avoid Tag Limits**: Discord has a limit of 20 tags per forum channel - manual setup ensures your most important tags are created
-3. **Immediate Availability**: Tags are ready immediately without waiting for the bot to create them
-
-To set up tags manually:
-
-1. Go to your Discord server and select the forum channel you created for referenda
-2. Click the gear icon next to the channel name to open channel settings
-3. Select "Tags" from the left sidebar
-4. Click "Create Tag" and add tags following the format `[NETWORK_NAME] Origin`
-5. Customize tag colors to match network branding
-6. Save your changes
-
-**Important**: The bot will automatically create tags if they don't exist, but Discord has a limit of 20 tags per forum channel. The tag format used by the bot is:
-
-```
-[NETWORK_NAME] Origin
-```
-
-For example:
-- `[POLKADOT] Root`
-- `[KUSAMA] Council`
-- `[MOONBEAM] Fellowship`
-
-You don't need to create all possible combinations - the bot will create them as needed. However, creating the most common ones in advance with appropriate colors improves the user experience.
-
-When the bot creates new forum posts for referenda, it will:
-- Prefix thread titles with the network name (e.g., "[Polkadot] Referendum #123")
-- Automatically apply or create the appropriate tag based on the network and origin
-- Include network-specific information and branding in the post
-
-This organization system allows all referenda from multiple networks to coexist in a single forum channel while maintaining clear visual separation. Users can filter the forum by tags to view only referenda from specific networks.
-
-> **Note**: If you add new networks to the bot later using the `/network add` command, the bot will automatically create tags for them as needed.
-
-#### Basic Commands
-
-- `/info` - Display bot information and statistics across all networks
-- `/help` - Show available commands and their descriptions
-- `/participation` - Check current participation rates for active referenda
-
-#### Network Management Commands
-
-The multi-network bot supports these additional commands:
-
-- `/network list` - List all configured networks
-- `/network add` - Add a new network to monitor
-- `/network remove` - Remove a network from monitoring
-- `/network update` - Update an existing network's configuration
-
-These commands are available to users with the admin role specified in your `.env` file as `DISCORD_ADMIN_ROLE`.
-
-#### Forum Monitoring
-
-The bot should automatically:
-
-1. Create forum posts for new referenda
-2. Update existing posts with voting information
-3. Add comments when significant events occur (e.g., voting period changes)
 
 #### Troubleshooting
 
@@ -1124,6 +932,75 @@ When the bot votes is dictated by `/data/vote_periods`. Each origin of a proposa
 
 ---
 
+## Authentication Methods
+
+### Option 1: Polkadot.js Extension (Recommended)
+
+1. Install the [Polkadot.js Extension](https://polkadot.js.org/extension/)
+2. Set `USE_POLKADOT_JS=true` in your [.env](.env) file
+3. When the bot starts, it will open a browser window for authentication
+4. Select your account in the Polkadot.js extension popup
+
+### Option 2: Mnemonic (Legacy)
+
+1. Set `USE_POLKADOT_JS=false` in your [.env](.env) file
+2. Add your mnemonic to the `MNEMONIC` variable
+3. Note: This method is less secure than using the extension
+
+---
+
+## Authentication with Polkadot.js Extension
+
+### Setting Up Authentication
+
+1. **Start the authentication server**:
+   ```bash
+   python -c "from bot.utils.polkadot_auth import PolkadotAuth; PolkadotAuth(config={}).run()"
+
+2. Connect your wallet:
+- Open your browser and go to: http://localhost:5000/polkadot-connect
+- Click the "Connect Wallet" button
+- Select your account in the Polkadot.js extension
+- Approve the connection when prompted
+
+3. Verify authentication:
+- After connecting, visit: http://localhost:5000/check-auth
+- You should see `{"is_authenticated": true}` if successful
+
+### Next Steps
+
+1. Start the verification services (in separate terminal windows):
+```bash
+# Terminal 1: Connect to VPS
+./connect_to_vps.sh
+
+# Terminal 2: Run verification
+./run_verification.sh
+```
+
+2. Bot Integration:
+- Once authenticated and the services are running, the bot will automatically:
+  - Use the connected account for operations
+  - Start populating referenda in the appropriate Discord channels
+  - Respect the roles and permissions set in your Discord server
+
+### Available Endpoints
+
+Endpoint	Method	Description
+/	GET	Redirects to /polkadot-connect
+/polkadot-connect	GET	Authentication page for wallet connection
+/set-account	POST	Internal endpoint for saving account info
+/check-auth	GET	Check authentication status
+/health	GET	Health check endpoint
+
+### Troubleshooting
+If you see is_authenticated: false, try refreshing the page or reconnecting your wallet
+Ensure the Polkadot.js extension is installed and unlocked
+Check the browser console for any JavaScript errors (F12 > Console)
+Make sure you've approved the connection in the extension popup
+
+---
+
 ## Proxy Accounts
 
 ### Proxy Account Requirements in Polkadot/Kusama
@@ -1401,7 +1278,7 @@ The multi-network architecture already supports configuring these values in the 
 
 Note that if legacy single network support is removed then it may be necessary to remove the main.py file and use only main_multi_network.py instead.
 
-## Support 
+## Support
 For assistance or inquiries, please refer to the following official channels of communication:
 
 ### JAM DAO

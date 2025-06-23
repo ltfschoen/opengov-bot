@@ -1,6 +1,6 @@
 from discord.ext.tasks import Loop
 from datetime import datetime, timezone
-from utils.logger import Logger
+from bot.utils.logger import Logger
 import asyncio
 
 logging = Logger()

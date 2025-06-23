@@ -10,10 +10,10 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Dict, Any
-from utils.logger import Logger
-from utils.config import Config
-from utils.data_processing import Text
-from utils.button_handler import ButtonHandler, ExternalLinkButton
+from bot.utils.logger import Logger
+from bot.utils.config import Config
+from bot.utils.data_processing import Text
+from bot.utils.button_handler import ButtonHandler, ExternalLinkButton
 from aiohttp.web_exceptions import HTTPException
 from datetime import datetime, timezone
 from math import ceil

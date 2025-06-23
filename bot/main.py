@@ -3,19 +3,19 @@ import json
 import discord
 import asyncio
 import re
-from utils.config import Config
-from utils.logger import Logger
-from utils.gov2 import OpenGovernance2
-from utils.subquery import SubstrateAPI
+from bot.utils.config import Config
+from bot.utils.logger import Logger
+from bot.utils.gov2 import OpenGovernance2
+from bot.utils.subquery import SubstrateAPI
 from datetime import datetime, timezone
-from governance_monitor import GovernanceMonitor
-from utils.embed_config import EmbedVoteScheme
-from utils.data_processing import CacheManager, ProcessCallData, DiscordFormatting
-from utils.button_handler import ButtonHandler, ExternalLinkButton
-from utils.task_handler import TaskHandler
-from utils.argument_parser import ArgumentParser
-from utils.permission_check import PermissionCheck
-from utils.participation_rate import calculate_current_participation_rate
+from bot.governance_monitor import GovernanceMonitor
+from bot.utils.embed_config import EmbedVoteScheme
+from bot.utils.data_processing import CacheManager, ProcessCallData, DiscordFormatting
+from bot.utils.button_handler import ButtonHandler, ExternalLinkButton
+from bot.utils.task_handler import TaskHandler
+from bot.utils.argument_parser import ArgumentParser
+from bot.utils.permission_check import PermissionCheck
+from bot.utils.participation_rate import calculate_current_participation_rate
 from discord import app_commands, Embed
 from discord.ext import tasks
 
@@ -758,6 +758,8 @@ if __name__ == '__main__':
     @client.event
     async def on_ready():
         try:
+            print(f'Logged in as {client.user}')
+            await client.check_referenda()
             for server in client.guilds:
                 await permission_checker.check_permissions(server, config.DISCORD_FORUM_CHANNEL_ID)
 

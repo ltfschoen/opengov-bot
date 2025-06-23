@@ -8,3 +8,7 @@ qrcode==8.2
 pillow==11.2.1
 aiofiles==24.1.0
 PyNaCl==1.5.0
+flask>=2.0.1
+flask-cors>=3.0.10
+substrate-interface>=1.7.1
+python-dotenv>=0.19.0

@@ -11,6 +11,21 @@ services:
       - ./.env:/app/.env
     depends_on:
       - db
+      - web
+    environment:
+      - USE_POLKADOT_JS=true
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    environment:
+      - FLASK_APP=bot/utils/polkadot_auth.py
+      - FLASK_ENV=development
+    restart: unless-stopped
 
   db:
     image: postgres
