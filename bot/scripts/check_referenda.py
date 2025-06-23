@@ -6,9 +6,26 @@ import json
 import logging
 import traceback
 from datetime import datetime
+import time
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Load from .env file in project root
+    dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', '.env'))
+    if os.path.exists(dotenv_path):
+        console_logger = logging.getLogger("console")
+        print(f"Loading environment variables from {dotenv_path}")
+        load_dotenv(dotenv_path)
+        print("Environment variables loaded successfully")
+    else:
+        print(f"Warning: .env file not found at {dotenv_path}")
+except ImportError:
+    print("Warning: python-dotenv not installed. Environment variables from .env file will not be loaded.")
+    print("Install with: pip install python-dotenv")
 
 # Enable verbose Discord logging
 logging.basicConfig(level=logging.DEBUG)
@@ -41,7 +58,17 @@ class StandaloneConfig:
         self.NETWORK = os.getenv('NETWORK_NAME', 'polkadot')
         self.NETWORK_NAME = self.NETWORK  # Alias for compatibility with OpenGovernance2
         self.SYMBOL = os.getenv('SYMBOL', 'DOT')
-        self.TOKEN_DECIMAL = int(os.getenv('TOKEN_DECIMAL', '10'))
+        
+        # Handle TOKEN_DECIMAL which might be in scientific notation (e.g., 1e10)
+        token_decimal_str = os.getenv('TOKEN_DECIMAL', '10')
+        try:
+            # Try parsing as float first to handle scientific notation
+            self.TOKEN_DECIMAL = int(float(token_decimal_str))
+            console_logger.info(f"Using TOKEN_DECIMAL: {self.TOKEN_DECIMAL}")
+        except ValueError:
+            console_logger.warning(f"Invalid TOKEN_DECIMAL value: {token_decimal_str}, using default 10")
+            self.TOKEN_DECIMAL = 10
+            
         self.SUBSTRATE_WSS = os.getenv('SUBSTRATE_WSS', 'wss://rpc.polkadot.io')
         
         # Discord configuration
@@ -137,76 +164,125 @@ async def initialize_discord():
     else:
         console_logger.warning("No Discord API key provided, skipping Discord initialization")
 
-async def post_referendum_to_discord(referendum_id, title, description, origin):
-    """Post a referendum to the Discord forum channel"""
+async def post_referendum_to_discord(ref_id, title, description, origin):
+    """Post a referendum to Discord."""
+    # Get the config
     config = StandaloneConfig()
     
     if not config.can_post_to_discord:
-        console_logger.warning("Cannot post to Discord: missing configuration")
+        console_logger.warning("Discord posting is disabled due to missing configuration")
         return False
-    
+        
     try:
-        console_logger.info(f"Attempting to post referendum #{referendum_id} to Discord...")
-        
+        # Get the guild
+        guild = bot.get_guild(int(config.DISCORD_SERVER_ID))
+        if not guild:
+            console_logger.error(f"Could not find guild with ID {config.DISCORD_SERVER_ID}")
+            return False
+            
         # Get the forum channel
-        channel_id = int(config.DISCORD_FORUM_CHANNEL_ID)
-        channel = bot.get_channel(channel_id)
-        
+        channel = guild.get_channel(int(config.DISCORD_FORUM_CHANNEL_ID))
         if not channel:
-            console_logger.error(f"Could not find forum channel with ID: {channel_id}")
+            console_logger.error(f"Could not find channel with ID {config.DISCORD_FORUM_CHANNEL_ID}")
             return False
             
-        if str(channel.type) != 'forum':
-            console_logger.error(f"Channel is not a forum channel! Type: {channel.type}")
+        # Check if it's a forum channel
+        if not isinstance(channel, discord.ForumChannel):
+            console_logger.error(f"Channel {channel.name} is not a forum channel")
             return False
-        
-        # Create a new forum post
-        console_logger.info(f"Creating forum post for referendum #{referendum_id}...")
-        
-        # Prepare content with notification
-        notify_role = config.DISCORD_NOTIFY_ROLE
-        content = f"<@&{notify_role}> New referendum #{referendum_id} is now available for discussion!"
-        
-        # Create forum post with appropriate tags
-        try:
-            # Try to find an appropriate tag based on origin
-            available_tags = channel.available_tags
-            tag_names = [tag.name for tag in available_tags]
-            console_logger.info(f"Available tags: {tag_names}")
             
-            # Find matching tag for the origin
-            tag_id = None
-            for tag in available_tags:
-                if origin in tag.name:
-                    tag_id = tag.id
+        # Get permissions
+        permissions = channel.permissions_for(guild.me)
+        console_logger.info(f"Bot permissions in forum channel:")
+        console_logger.info(f"  Send Messages: {permissions.send_messages}")
+        console_logger.info(f"  Create Public Threads: {permissions.create_public_threads}")
+        console_logger.info(f"  Send Messages in Threads: {permissions.send_messages_in_threads}")
+        console_logger.info(f"  Manage Threads: {permissions.manage_threads}")
+        
+        if not permissions.create_public_threads:
+            console_logger.error("Bot doesn't have permission to create threads")
+            console_logger.info("Please make sure the bot has the 'Create Public Threads' permission")
+            return False
+            
+        # Format the message
+        message = f"## Referendum #{ref_id}: {title}\n\n"
+        if description:
+            message += f"{description}\n\n"
+        message += f"**Origin:** {origin}\n"
+        
+        # Check for available tags
+        tags = []
+        if hasattr(channel, 'available_tags') and channel.available_tags:
+            console_logger.info(f"Available tags: {[tag.name for tag in channel.available_tags]}")
+            
+            # Try to find a matching tag
+            matching_tag = None
+            for tag in channel.available_tags:
+                if tag.name.lower() == origin.lower():
+                    matching_tag = tag  # Store the entire tag object
+                    console_logger.info(f"Found matching tag: {tag.name}")
                     break
-            
-            # Create the thread with or without tag
-            if tag_id:
-                console_logger.info(f"Using tag: {tag_id}")
-                thread = await channel.create_thread(
-                    name=f"#{referendum_id}: {title}",
-                    content=content,
-                    applied_tags=[tag_id]
-                )
+                    
+            if matching_tag:
+                tags = [matching_tag]  # Use the tag object directly
             else:
-                console_logger.info("No matching tag found, creating thread without tags")
-                thread = await channel.create_thread(
-                    name=f"#{referendum_id}: {title}",
-                    content=content
-                )
+                console_logger.info("No matching tag found, using first available tag")
+                if channel.available_tags:
+                    tags = [channel.available_tags[0]]  # Use the first tag object
+        
+        # Check if tags are required
+        if hasattr(channel, 'requires_tag') and channel.requires_tag and not tags:
+            console_logger.warning("Forum channel requires tags but no tags are available")
+            if channel.available_tags:
+                tags = [channel.available_tags[0]]  # Use the first tag object
+                console_logger.info(f"Using first available tag: {channel.available_tags[0].name}")
+        
+        try:
+            # Create the thread with initial message
+            thread_name = f"#{ref_id}: {title}"
+            if len(thread_name) > 100:
+                thread_name = thread_name[:97] + "..."
+                
+            console_logger.info(f"Creating thread with name: {thread_name}")
+            console_logger.info(f"Applied tags: {[tag.name for tag in tags]}")
             
-            console_logger.info(f"Created thread: {thread.name} (ID: {thread.id})")
+            # Use the forum-specific thread creation method
+            thread = await channel.create_thread(
+                name=thread_name,
+                content=message,
+                applied_tags=[discord.Object(id=tag.id) for tag in tags] if tags else None  # Convert tag objects to Discord.Object instances
+            )
+            # ThreadWithMessage object has thread attribute that contains the actual Thread
+            console_logger.info(f"Created thread: {thread.thread.name} (ID: {thread.thread.id})")
             
-            # Post the description as a follow-up message
-            await thread.send(f"**Description**: {description}")
+            # Mention the notify role if configured
+            if config.DISCORD_NOTIFY_ROLE:
+                # Find the role
+                role = None
+                for r in guild.roles:
+                    if r.name == config.DISCORD_NOTIFY_ROLE:
+                        role = r
+                        break
+                
+                if role:
+                    await thread.thread.send(f"{role.mention} New referendum #{ref_id} is now available for discussion!")
+                    console_logger.info(f"Mentioned role {role.name} in thread")
+                else:
+                    console_logger.warning(f"Could not find role with name {config.DISCORD_NOTIFY_ROLE}")
+                    # Try sending a message with the role name as text
+                    await thread.thread.send(f"@{config.DISCORD_NOTIFY_ROLE} New referendum #{ref_id} is now available for discussion!")
             
             return True
-        except Exception as e:
+        except discord.Forbidden as e:
+            console_logger.error(f"Error creating forum post: {e}")
+            console_logger.error("The bot doesn't have the required permissions")
+            console_logger.info("Please check the bot's role permissions and channel-specific permissions")
+            traceback.print_exc()
+            return False
+        except discord.HTTPException as e:
             console_logger.error(f"Error creating forum post: {e}")
             traceback.print_exc()
             return False
-            
     except Exception as e:
         console_logger.error(f"Error posting to Discord: {e}")
         traceback.print_exc()
@@ -277,7 +353,7 @@ async def main():
             fake_ref_id = 9999
             fake_title = "TEST_DOT_REF"
             fake_desc = "This is a test referendum for Polkadot created in test mode..."
-            fake_origin = "TestOrigin"
+            fake_origin = "TestOrigin" # tag
             
             console_logger.info(f"Created fake Polkadot referendum #{fake_ref_id}: {fake_title}")
             console_logger.info(f"Returning 1 fake referenda: [{fake_ref_id}]")
@@ -339,23 +415,89 @@ async def main():
                 console_logger.info(f"Found {len(new_referendums)} new referendums")
                 
                 # Process each referendum
-                for ref_id in new_referendums:
-                    ref_data = new_referendums[ref_id]
+                for ref_id, ref_data in new_referendums.items():
                     title = ref_data.get('title', f"Referendum #{ref_id}")
-                    description = ref_data.get('description', 'No description available')
+                    description = ref_data.get('description')
                     origin = ref_data.get('origin', 'Unknown')
+                    status = ref_data.get('status', 'Unknown')
                     
                     console_logger.info(f"Referendum #{ref_id}: {title}")
-                    console_logger.info(f"Description: {description[:100]}...")
+                    if description:
+                        console_logger.info(f"Description: {description[:100]}..." if len(description) > 100 else f"Description: {description}")
+                    else:
+                        console_logger.info("Description: None")
+                    
                     console_logger.info(f"Origin: {origin}")
+                    console_logger.info(f"Status: {status}")
+                    
+                    # Prepare the message content
+                    message = f"## {title or 'Untitled Referendum'}\n\n"
+                    if description:
+                        message += f"{description}\n\n"
+                    message += f"**Origin:** {origin}\n"
+                    message += f"**Status:** {status}\n"
+                    message += f"**Referendum ID:** {ref_id}\n\n"
                     
                     # Post to Discord if possible
                     if config.can_post_to_discord:
-                        success = await post_referendum_to_discord(ref_id, title, description, origin)
-                        if success:
-                            console_logger.info(f"Successfully posted referendum #{ref_id} to Discord")
-                        else:
-                            console_logger.error(f"Failed to post referendum #{ref_id} to Discord")
+                        try:
+                            # Find the forum channel
+                            guild = bot.get_guild(int(config.DISCORD_SERVER_ID))
+                            if not guild:
+                                console_logger.error(f"Could not find Discord server with ID {config.DISCORD_SERVER_ID}")
+                                continue
+                                
+                            forum_channel = guild.get_channel(int(config.DISCORD_FORUM_CHANNEL_ID))
+                            if not forum_channel:
+                                console_logger.error(f"Could not find forum channel with ID {config.DISCORD_FORUM_CHANNEL_ID}")
+                                continue
+                                
+                            # Check if forum channel has required tags
+                            tags = []
+                            if hasattr(forum_channel, 'available_tags') and forum_channel.available_tags:
+                                # Try to find a tag that matches the origin
+                                origin_tag = None
+                                for tag in forum_channel.available_tags:
+                                    if tag.name.lower() == origin.lower():
+                                        origin_tag = tag.id
+                                        break
+                                
+                                # If no matching tag found, use the first available tag
+                                if origin_tag:
+                                    tags = [origin_tag]
+                                    console_logger.info(f"Using matching tag for origin: {origin}")
+                                elif forum_channel.available_tags:
+                                    tags = [forum_channel.available_tags[0].id]
+                                    console_logger.info(f"Using first available tag: {forum_channel.available_tags[0].name}")
+                            
+                            # Create thread in forum channel
+                            thread = await forum_channel.create_thread(
+                                name=f"Referendum #{ref_id}: {title[:80]}" if len(title) > 80 else f"Referendum #{ref_id}: {title}",
+                                content=message,
+                                applied_tags=[discord.Object(id=tag) for tag in tags] if tags else None  # Convert tag IDs to Discord.Object instances
+                            )
+                            console_logger.info(f"Posted referendum #{ref_id} to Discord thread: {thread.thread.name}")
+                            
+                            # Mention roles if configured
+                            if config.DISCORD_NOTIFY_ROLE:
+                                role_mention = None
+                                for role in guild.roles:
+                                    if role.name == config.DISCORD_NOTIFY_ROLE:
+                                        role_mention = role
+                                        break
+                                
+                                if role_mention:
+                                    await thread.thread.send(f"{role_mention.mention} A new referendum has been posted!")
+                                    console_logger.info(f"Mentioned role {role_mention.name} in thread")
+                                else:
+                                    console_logger.warning(f"Could not find role with name {config.DISCORD_NOTIFY_ROLE}")
+                                    # Try sending a message with the role name as text
+                                    await thread.thread.send(f"@{config.DISCORD_NOTIFY_ROLE} New referendum #{ref_id} is now available for discussion!")
+                        except Exception as e:
+                            console_logger.error(f"Error posting referendum #{ref_id} to Discord: {e}")
+                            traceback.print_exc()
+                    else:
+                        console_logger.info("Skipping Discord posting (not configured)")
             else:
                 console_logger.info("No new referendums found")
     except Exception as e:
@@ -379,60 +521,136 @@ async def test_discord():
     """Test Discord connectivity and forum channel access"""
     config = StandaloneConfig()
     
-    if not config.DISCORD_API_KEY:
-        console_logger.error("Cannot test Discord: No API key provided")
-        return
+    console_logger.info("=== DISCORD TEST MODE ===")
+    console_logger.info("Testing Discord connectivity and permissions...")
+    
+    # Check Discord configuration
+    console_logger.info("Discord configuration:")
+    console_logger.info(f"  API Key present: {bool(config.DISCORD_API_KEY)}")
+    console_logger.info(f"  Server ID: {config.DISCORD_SERVER_ID}")
+    console_logger.info(f"  Forum Channel ID: {config.DISCORD_FORUM_CHANNEL_ID}")
+    console_logger.info(f"  Notify Role: {config.DISCORD_NOTIFY_ROLE}")
+    
+    # Check if Discord can be used
+    if not config.can_post_to_discord:
+        missing = []
+        if not config.DISCORD_API_KEY:
+            missing.append("DISCORD_API_KEY")
+        if not config.DISCORD_SERVER_ID:
+            missing.append("DISCORD_SERVER_ID")
+        if not config.DISCORD_FORUM_CHANNEL_ID:
+            missing.append("DISCORD_FORUM_CHANNEL_ID")
         
+        console_logger.error(f"Discord posting is disabled. Missing: {', '.join(missing)}")
+        console_logger.info("Please set these environment variables and try again.")
+        console_logger.info("You can create a .env file in the project root with these variables.")
+        console_logger.info("Example:")
+        console_logger.info("DISCORD_API_KEY=your_bot_token")
+        console_logger.info("DISCORD_SERVER_ID=1234567890")
+        console_logger.info("DISCORD_FORUM_CHANNEL_ID=0987654321")
+        console_logger.info("DISCORD_NOTIFY_ROLE=DOT-GOV")
+        return False
+    
+    # Initialize Discord client
+    console_logger.info("Initializing Discord client...")
     try:
-        console_logger.info("Testing Discord connectivity...")
+        await initialize_discord()
         
-        # Start Discord client if not already started
-        if not bot.is_ready():
-            console_logger.info("Starting Discord client for testing...")
-            await bot.start(config.DISCORD_API_KEY)
+        # Wait for the bot to be ready
+        console_logger.info("Waiting for Discord client to be ready...")
+        start_time = time.time()
+        while not bot.is_ready():
+            await asyncio.sleep(1)
+            if time.time() - start_time > 30:
+                console_logger.error("Timeout waiting for Discord client to be ready")
+                return False
         
-        # Check if we can access the forum channel
-        if config.DISCORD_FORUM_CHANNEL_ID:
-            channel_id = int(config.DISCORD_FORUM_CHANNEL_ID)
-            channel = bot.get_channel(channel_id)
+        console_logger.info("Discord client is ready!")
+        
+        # List available guilds
+        console_logger.info(f"Connected to {len(bot.guilds)} guilds:")
+        for guild in bot.guilds:
+            console_logger.info(f"  - {guild.name} (ID: {guild.id})")
             
-            if channel:
-                console_logger.info(f"Found channel: {channel.name} (ID: {channel.id})")
-                console_logger.info(f"Channel type: {channel.type}")
+            # Check if this is the target guild
+            if str(guild.id) == config.DISCORD_SERVER_ID:
+                console_logger.info(f"    Found target guild: {guild.name}")
                 
-                # Try to send a test message
-                if str(channel.type) == 'forum':
-                    console_logger.info("Creating test thread in forum channel...")
-                    test_thread = await channel.create_thread(
-                        name="Test Thread - Please Ignore",
-                        content="This is a test thread to verify bot permissions. You can delete this."
-                    )
-                    console_logger.info(f"Successfully created test thread: {test_thread.name} (ID: {test_thread.id})")
+                # Find the forum channel
+                forum_channel = guild.get_channel(int(config.DISCORD_FORUM_CHANNEL_ID))
+                if forum_channel:
+                    console_logger.info(f"    Found forum channel: {forum_channel.name}")
                     
-                    # Send a message in the thread
-                    await test_thread.send("Test message in thread. If you can see this, the bot is working correctly!")
-                    console_logger.info("Successfully sent message in test thread")
+                    # Check channel type
+                    if forum_channel.type == discord.ChannelType.forum:
+                        console_logger.info(f"    Channel is a forum channel")
+                        
+                        # Check permissions
+                        permissions = forum_channel.permissions_for(guild.me)
+                        console_logger.info(f"    Bot permissions in forum channel:")
+                        console_logger.info(f"      Send Messages: {permissions.send_messages}")
+                        console_logger.info(f"      Create Public Threads: {permissions.create_public_threads}")
+                        console_logger.info(f"      Send Messages in Threads: {permissions.send_messages_in_threads}")
+                        console_logger.info(f"      Manage Threads: {permissions.manage_threads}")
+                        console_logger.info(f"      Read Message History: {permissions.read_message_history}")
+                        
+                        # Log all permissions for debugging
+                        console_logger.info(f"    All permissions (raw value: {permissions.value}):")
+                        for perm_name, perm_value in permissions:
+                            console_logger.info(f"      {perm_name}: {perm_value}")
+                        
+                        # Check available tags
+                        if hasattr(forum_channel, 'available_tags'):
+                            console_logger.info(f"    Available tags in forum channel:")
+                            for tag in forum_channel.available_tags:
+                                console_logger.info(f"      - {tag.name} (ID: {tag.id})")
+                        else:
+                            console_logger.warning(f"    No tags available in forum channel")
+                        
+                        # Test posting a message
+                        console_logger.info("    Testing post to forum channel...")
+                        try:
+                            # Create a test thread
+                            thread = await forum_channel.create_thread(
+                                name="Test Thread - Please Ignore",
+                                content="This is a test thread created by the OpenGov Bot to verify Discord connectivity. This thread can be safely deleted.",
+                                auto_archive_duration=60
+                            )
+                            console_logger.info(f"    Successfully created test thread: {thread.thread.name}")
+                            
+                            # Post a message in the thread
+                            await thread.thread.send("Test message in thread. This confirms the bot can post in threads.")
+                            console_logger.info(f"    Successfully posted message in thread")
+                            
+                            # Lock the thread to indicate it's a test
+                            await thread.thread.edit(locked=True)
+                            console_logger.info(f"    Successfully locked thread")
+                            
+                            return True
+                        except Exception as e:
+                            console_logger.error(f"    Error posting to forum channel: {e}")
+                            traceback.print_exc()
+                    else:
+                        console_logger.error(f"    Channel is not a forum channel (type: {forum_channel.type})")
                 else:
-                    console_logger.error(f"Channel is not a forum channel! Type: {channel.type}")
-                    console_logger.info("Attempting to send a direct message to the channel...")
-                    await channel.send("Test message from referendum bot. If you can see this, the bot can post to this channel but it's not a forum channel.")
-            else:
-                console_logger.error(f"Could not find channel with ID: {channel_id}")
-                console_logger.info("Available channels:")
-                for guild in bot.guilds:
-                    console_logger.info(f"Guild: {guild.name}")
-                    for ch in guild.channels:
-                        console_logger.info(f"  - {ch.name} (ID: {ch.id}, Type: {ch.type})")
-        else:
-            console_logger.error("No forum channel ID provided")
+                    console_logger.error(f"    Forum channel not found (ID: {config.DISCORD_FORUM_CHANNEL_ID})")
+        
+        # If we got here, we didn't find the target guild
+        if config.DISCORD_SERVER_ID not in [str(g.id) for g in bot.guilds]:
+            console_logger.error(f"Target guild not found (ID: {config.DISCORD_SERVER_ID})")
+            console_logger.info("Make sure the bot has been added to the server and has the correct permissions")
+    
     except Exception as e:
         console_logger.error(f"Error testing Discord: {e}")
         traceback.print_exc()
+        return False
     finally:
         # Close Discord connection
         console_logger.info("Closing Discord connection...")
         await bot.close()
         console_logger.info("Discord connection closed")
+    
+    return False
 
 if __name__ == "__main__":
     # Check if we should run the main function or just test Discord

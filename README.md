@@ -368,6 +368,7 @@ The bot requires a Forum channel (not a regular Text channel) to post referenda:
      WishForChange, ReferendumKiller
      ```
 5. Set appropriate permissions for the channel
+   - IMPORTANT: Ensure permissions granted to the bot app itself, not just the roles
 6. Copy the channel ID (right-click > Copy ID) and add it to your `.env` file as `DISCORD_FORUM_CHANNEL_ID`
 
 ### Discord Bot Setup
@@ -402,11 +403,24 @@ When adding the bot to your server, these permissions should be automatically re
 #### Bot Setup Sequence
 
 1. **Add Bot to Server (MUST BE DONE FIRST)**:
-   - Use this OAuth2 URL format to add your bot to your server:
+   - Generate the OAuth2 URL by following these steps:
+     - Go to the [Discord Developer Portal](https://discord.com/developers/applications/)
+     - Select your bot application
+     - Go to the "OAuth2" section in the left sidebar
+     - Click on "URL Generator"
+     - Under "Scopes", select:
+       - `bot`
+       - `applications.commands` (for slash commands)
+     - Under "Bot Permissions", select:
+       - **General Permissions**: View Channels
+       - **Text Permissions**: Send Messages, Create Public Threads, Send Messages in Threads, Manage Threads, Embed Links, Attach Files, Read Message History, Mention Everyone
+       - **Other Permissions**: Use External Emojis, Add Reactions
+   - Use this generated OAuth2 URL to add your bot to your server:
    ```
-   https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=399164042320&scope=bot%20applications.commands
+   https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=326418025536&scope=bot%20applications.commands
    ```
-   - Replace `YOUR_CLIENT_ID` with your Discord Application ID
+   - Replace `YOUR_CLIENT_ID` with your Discord Applic
+   - Another configuration: https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=399164042320&scope=bot%20applications.commands
    - Select your server from the dropdown menu
    - Click "Authorize" and complete any verification steps
    - Discord will automatically create a role for the bot with the necessary permissions
@@ -542,6 +556,36 @@ If you're experiencing issues with Discord endpoint verification, follow these s
    - You can see detailed logs of these requests in the server output
 
 6. **Multiple Endpoints**: While Discord officially uses `/api/interactions`, our server also supports `/interactions`, `/api/discord/interactions`, and `/discord/interactions` for flexibility during testing.
+
+#### Testing the Bot
+
+To test the bot's functionality without interacting with the actual blockchain:
+
+1. **Test Mode**:
+   - Use the TEST_MODE environment variable to run the bot in test mode:
+   ```bash
+   TEST_MODE=true python -m bot.scripts.check_referenda
+   ```
+   - This will create a fake referendum and attempt to post it to Discord
+   - Useful for testing Discord connectivity and permissions
+
+2. **Discord-Only Test**:
+   - To test only the Discord posting functionality:
+   ```bash
+   TEST_MODE=true python -m bot.scripts.check_referenda --test-discord
+   ```
+   - This bypasses most of the blockchain interaction code
+
+3. **Debugging Permissions**:
+   - If you encounter permission errors:
+     - Check the bot's role permissions in your Discord server
+     - Verify the forum channel permissions
+     - Ensure the bot has the necessary permissions listed in the OAuth2 URL section
+     - Try temporarily disabling the "Require Tags" setting in your forum channel
+
+4. **Viewing Logs**:
+   - The script outputs detailed logs about permissions, tags, and any errors
+   - Pay attention to messages about "Missing Access" or permission issues
 
 #### Troubleshooting Verification Issues
 
