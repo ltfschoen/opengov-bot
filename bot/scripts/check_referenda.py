@@ -386,34 +386,19 @@ async def main():
             # Get real referenda from the network
             new_referendums, referendum_info = await governance.check_referendums()
 
-            # Add these debug lines
-            print(f"DEBUG: referendum_info: {referendum_info}")
+            # Add minimal debug output
+            print(f"DEBUG: referendum_info contains {len(referendum_info) if referendum_info else 0} referenda")
             print(f"DEBUG: new_referendums: {new_referendums}")
-            print(f"DEBUG: Cache path: {os.path.abspath('../data/governance.cache')}")
+            print(f"DEBUG: Current working directory: {os.getcwd()}")
             
-            # Display all ongoing referenda
-            if referendum_info:
-                ongoing_refs = []
-                for ref_id, ref_data in referendum_info.items():
-                    if 'Ongoing' in ref_data:
-                        ongoing_refs.append(int(ref_id))
-                
-                if ongoing_refs:
-                    ongoing_refs.sort()
-                    console_logger.info(f"Currently ongoing referendums: {ongoing_refs}")
-                    
-                    # Get details for each ongoing referendum
-                    for ref_id in ongoing_refs[:5]:  # Limit to first 5 to avoid too much output
-                        console_logger.info(f"Getting details for referendum #{ref_id}...")
-                        ref_data = await governance.fetch_referendum_data(referendum_id=ref_id, network=config.NETWORK_NAME)
-                        console_logger.info(f"Referendum #{ref_id} details:")
-                        console_logger.info(f"  Title: {ref_data.get('title', 'No title')}")
-                        console_logger.info(f"  Origin: {ref_data.get('origin', 'Unknown')}")
-                        
-                    if len(ongoing_refs) > 5:
-                        console_logger.info(f"... and {len(ongoing_refs) - 5} more referendums")
+            # Check if the cache file exists in the correct location
+            # The CacheManager uses the data directory + filename, so we need to check both paths
+            cache_file_direct = "data/governance.cache"
+            cache_file_manager = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")), "data", "governance.cache")
             
-            # Process new referenda
+            print(f"DEBUG: Cache file at {cache_file_direct} exists: {os.path.exists(cache_file_direct)}")
+            print(f"DEBUG: Cache file at {cache_file_manager} exists: {os.path.exists(cache_file_manager)}")
+            
             if new_referendums:
                 console_logger.info(f"Found {len(new_referendums)} new referendums")
                 

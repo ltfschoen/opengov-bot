@@ -559,6 +559,8 @@ If you're experiencing issues with Discord endpoint verification, follow these s
 
 #### Testing the Bot
 
+**Important**: `check_referenda` uses cache (and is called if you were to instead run `./connect_to_vps.sh & ./run_verification.sh`), whereas the script `debug_and_post` does not use cache. If you are having issues with `check_referenda` posting referenda that are cache related, use `debug_and_post` instead.
+
 To test the bot's functionality without interacting with the actual blockchain:
 
 1. **Test Mode**:

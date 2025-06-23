@@ -683,7 +683,10 @@ class SubstrateAPI:
         referendum = {}
 
         try:
+            # Print debug info about the connection
+            print(f"DEBUG: Connecting to Substrate node at {self.config.SUBSTRATE_WSS}")
             await self.connect(self.config.SUBSTRATE_WSS)
+            print(f"DEBUG: Connected to Substrate node, websocket connected: {self.substrate.websocket.connected}")
 
             if index is not None:
                 result = await asyncio.wait_for(
@@ -697,6 +700,7 @@ class SubstrateAPI:
                 )
                 return result.serialize()
             else:
+                print(f"DEBUG: Querying all referenda using query_map")
                 qmap = await asyncio.wait_for(
                     asyncio.to_thread(
                         self.substrate.query_map,
@@ -706,20 +710,41 @@ class SubstrateAPI:
                     ),
                     timeout=60
                 )
+                # QueryMapResult doesn't support len() directly, so we can't use len(qmap)
+                print(f"DEBUG: Received query_map response, processing items...")
+                
+                item_count = 0
                 for index, info in qmap:
+                    item_count += 1
                     if 'Ongoing' in info:
                         referendum.update({int(index.value): info.value})
-
-                sort = json.dumps(referendum, sort_keys=True)
-                data = json.loads(sort)
-                return data
+                
+                print(f"DEBUG: Processed {item_count} total items, found {len(referendum)} ongoing referenda")
+                
+                try:
+                    sort = json.dumps(referendum, sort_keys=True)
+                    data = json.loads(sort)
+                    return data
+                except json.JSONDecodeError as je:
+                    print(f"DEBUG: JSON error during sort/load: {je}")
+                    print(f"DEBUG: Referendum data before JSON processing: {referendum}")
+                    # Return the unsorted data as fallback
+                    return referendum
 
         except asyncio.TimeoutError:
             self.logger.error("Timeout while fetching referendum info.")
+            print(f"DEBUG: Timeout connecting to {self.config.SUBSTRATE_WSS}")
             raise
 
         except Exception as e:
             self.logger.error(f"Error fetching referendum info: {e}")
+            print(f"DEBUG: Exception type: {type(e).__name__}")
+            print(f"DEBUG: Exception details: {str(e)}")
+            
+            # Check if substrate connection is still valid
+            if self.substrate:
+                print(f"DEBUG: Substrate connection status: {self.substrate.websocket.connected}")
+            
             raise e
 
     async def referendum_call_data(self, index: int, gov1: bool, call_data: bool):

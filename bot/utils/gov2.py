@@ -1,6 +1,7 @@
 import asyncio
 import aiohttp
 import logging
+import os
 from bot.utils.data_processing import CacheManager
 
 
@@ -99,14 +100,24 @@ class OpenGovernance2:
         try:
             referendum_info_for = await self.substrate.referendumInfoFor()
 
-            results = self.util.get_cache_difference(filename='../data/governance.cache', data=referendum_info_for)
+            # Use just the filename, not the path with 'data/' prefix
+            # This avoids the double data directory issue
+            cache_filename = 'governance.cache'
+            print(f"DEBUG: Using cache filename: {cache_filename}")
+            
+            results = self.util.get_cache_difference(filename=cache_filename, data=referendum_info_for)
+
+            # Debug the results from cache difference
+            print(f"DEBUG: Cache difference results: {results}")
 
             if results:
                 for key, value in results.items():
                     if 'added' in key:
+                        print(f"DEBUG: Found added items in key: {key}")
                         for index in results['dictionary_item_added']:
                             total_found = total_found + 1
                             index = index.strip('root').replace("['", "").replace("']", "")
+                            print(f"DEBUG: Processing new referendum with index: {index}")
                             onchain_info = referendum_info_for[index]['Ongoing']
                             governance_platform = await self.fetch_referendum_data(referendum_id=index, network=self.config.NETWORK_NAME)
 
@@ -117,10 +128,11 @@ class OpenGovernance2:
                             new_referendums[index]['onchain'] = onchain_info
 
                 if total_found > 0:
-                    self.util.save_data_to_cache(filename='../data/governance.cache', data=referendum_info_for)
+                    print(f"DEBUG: Saving {total_found} referenda to cache")
+                    # Use the same filename for saving
+                    self.util.save_data_to_cache(filename=cache_filename, data=referendum_info_for)
 
-                return new_referendums, referendum_info_for
-            return False, None
+            return new_referendums, referendum_info_for
         except Exception as e:
             logging.error(f"Error checking referendums: {e}")
             return False, None
