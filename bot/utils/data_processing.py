@@ -77,8 +77,18 @@ class Text:
 
 class CacheManager:
     @staticmethod
+    def get_data_dir():
+        """Get the absolute path to the data directory."""
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+        data_dir = os.path.join(project_root, "data")
+        os.makedirs(data_dir, exist_ok=True)
+        return data_dir
+
+    @staticmethod
     def save_data_to_cache(filename: str, data: Dict[str, Any]) -> None:
         """Save data to a JSON file."""
+        # Ensure the directory exists if filename contains subdirectories
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, 'w') as cache:
             json.dump(data, cache, indent=4)
 
@@ -92,10 +102,20 @@ class CacheManager:
     @staticmethod
     def get_cache_difference(filename: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Compare the provided data with the cached data and return the difference using deepdiff."""
-        full_path = os.path.join("../data", filename)
+        # Use absolute path based on the project root
+        data_dir = CacheManager.get_data_dir()
+        full_path = os.path.join(data_dir, filename)
 
         if not os.path.isfile(full_path):
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            
+            # Save the data to cache
             CacheManager.save_data_to_cache(full_path, data)
+            
+            # Return all data as new on first run
+            if data:
+                return {"dictionary_item_added": [f"root['{key}']" for key in data.keys()]}
             return {}
 
         cached_data = CacheManager.load_data_from_cache(full_path)
@@ -117,11 +137,15 @@ class CacheManager:
 
     @staticmethod
     def delete_old_keys_and_archive(json_file_path, days=14, archive_filename="archived_votes.json"):
+        data_dir = CacheManager.get_data_dir()
+        full_path = os.path.join(data_dir, json_file_path)
+        archive_path = os.path.join(data_dir, archive_filename)
+
         current_time = int(time.time())
         time_threshold = int(days) * 24 * 60 * 60  # Convert days to seconds
 
         # Load JSON data from the file
-        with open(json_file_path, "r") as json_file:
+        with open(full_path, "r") as json_file:
             json_data = json.load(json_file)
 
         keys_to_delete = []
@@ -131,8 +155,8 @@ class CacheManager:
                 keys_to_delete.append(key)
 
         # Load archived data or create an empty dictionary if the file doesn't exist
-        if os.path.exists(archive_filename):
-            with open(archive_filename, "r") as archive_file:
+        if os.path.exists(archive_path):
+            with open(archive_path, "r") as archive_file:
                 archived_data = json.load(archive_file)
         else:
             archived_data = {}
@@ -143,11 +167,11 @@ class CacheManager:
             del json_data[key]
 
         # Save the archived data to the file
-        with open(archive_filename, "w") as archive_file:
+        with open(archive_path, "w") as archive_file:
             json.dump(archived_data, archive_file, indent=2)
 
         # Save the updated JSON data back to the original file
-        with open(json_file_path, "w") as json_file:
+        with open(full_path, "w") as json_file:
             json.dump(json_data, json_file, indent=2)
 
         # Return the list of archived keys
@@ -155,9 +179,12 @@ class CacheManager:
 
     @staticmethod
     def delete_executed_keys_and_archive(json_file_path, active_proposals, archive_filename="archived_votes.json"):
+        data_dir = CacheManager.get_data_dir()
+        full_path = os.path.join(data_dir, json_file_path)
+        archive_path = os.path.join(data_dir, archive_filename)
 
         # Load JSON data from the file
-        with open(json_file_path, "r") as json_file:
+        with open(full_path, "r") as json_file:
             json_data = json.load(json_file)
 
         vote_count_proposals = []
@@ -174,8 +201,8 @@ class CacheManager:
                 keys_to_delete.append(index_to_key[str(index)])
 
         # Load archived data or create an empty dictionary if the file doesn't exist
-        if os.path.exists(archive_filename):
-            with open(archive_filename, "r") as archive_file:
+        if os.path.exists(archive_path):
+            with open(archive_path, "r") as archive_file:
                 archived_data = json.load(archive_file)
         else:
             archived_data = {}
@@ -186,15 +213,16 @@ class CacheManager:
             del json_data[key]
 
         # Save the archived data to the file
-        with open(archive_filename, "w") as archive_file:
+        with open(archive_path, "w") as archive_file:
             json.dump(archived_data, archive_file, indent=2)
 
         # Save the updated JSON data back to the original file
-        with open(json_file_path, "w") as json_file:
+        with open(full_path, "w") as json_file:
             json.dump(json_data, json_file, indent=2)
 
         # Return the list of archived keys
         return keys_to_delete
+
     @staticmethod
     def rotating_backup_file(source_path, backup_dir, max_versions=3):
         """

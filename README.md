@@ -576,14 +576,25 @@ To test the bot's functionality without interacting with the actual blockchain:
    ```
    - This bypasses most of the blockchain interaction code
 
-3. **Debugging Permissions**:
+3. **Debug and Post Script**:
+   - To directly fetch real referenda from the blockchain and post to Discord (bypassing cache incase you have encountered issues with it posting referenda that is cache related):
+   ```bash
+   python -m bot.scripts.debug_and_post
+   ```
+   - To fetch and post only one referendum per network (faster testing):
+   ```bash
+   python -m bot.scripts.debug_and_post --single
+   ```
+   - This script is useful for debugging issues with blockchain data fetching or Discord posting
+
+4. **Debugging Permissions**:
    - If you encounter permission errors:
      - Check the bot's role permissions in your Discord server
      - Verify the forum channel permissions
      - Ensure the bot has the necessary permissions listed in the OAuth2 URL section
      - Try temporarily disabling the "Require Tags" setting in your forum channel
 
-4. **Viewing Logs**:
+5. **Viewing Logs**:
    - The script outputs detailed logs about permissions, tags, and any errors
    - Pay attention to messages about "Missing Access" or permission issues
 

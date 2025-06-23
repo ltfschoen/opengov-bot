@@ -339,8 +339,6 @@ async def main():
                         
                     if len(ongoing_refs) > 5:
                         console_logger.info(f"... and {len(ongoing_refs) - 5} more referendums")
-            else:
-                console_logger.info("No ongoing referendums found")
         except Exception as e:
             console_logger.error(f"Error getting ongoing referendums: {e}")
             traceback.print_exc()
@@ -387,6 +385,11 @@ async def main():
         else:
             # Get real referenda from the network
             new_referendums, referendum_info = await governance.check_referendums()
+
+            # Add these debug lines
+            print(f"DEBUG: referendum_info: {referendum_info}")
+            print(f"DEBUG: new_referendums: {new_referendums}")
+            print(f"DEBUG: Cache path: {os.path.abspath('../data/governance.cache')}")
             
             # Display all ongoing referenda
             if referendum_info:
@@ -430,72 +433,13 @@ async def main():
                     console_logger.info(f"Origin: {origin}")
                     console_logger.info(f"Status: {status}")
                     
-                    # Prepare the message content
-                    message = f"## {title or 'Untitled Referendum'}\n\n"
-                    if description:
-                        message += f"{description}\n\n"
-                    message += f"**Origin:** {origin}\n"
-                    message += f"**Status:** {status}\n"
-                    message += f"**Referendum ID:** {ref_id}\n\n"
-                    
                     # Post to Discord if possible
                     if config.can_post_to_discord:
-                        try:
-                            # Find the forum channel
-                            guild = bot.get_guild(int(config.DISCORD_SERVER_ID))
-                            if not guild:
-                                console_logger.error(f"Could not find Discord server with ID {config.DISCORD_SERVER_ID}")
-                                continue
-                                
-                            forum_channel = guild.get_channel(int(config.DISCORD_FORUM_CHANNEL_ID))
-                            if not forum_channel:
-                                console_logger.error(f"Could not find forum channel with ID {config.DISCORD_FORUM_CHANNEL_ID}")
-                                continue
-                                
-                            # Check if forum channel has required tags
-                            tags = []
-                            if hasattr(forum_channel, 'available_tags') and forum_channel.available_tags:
-                                # Try to find a tag that matches the origin
-                                origin_tag = None
-                                for tag in forum_channel.available_tags:
-                                    if tag.name.lower() == origin.lower():
-                                        origin_tag = tag.id
-                                        break
-                                
-                                # If no matching tag found, use the first available tag
-                                if origin_tag:
-                                    tags = [origin_tag]
-                                    console_logger.info(f"Using matching tag for origin: {origin}")
-                                elif forum_channel.available_tags:
-                                    tags = [forum_channel.available_tags[0].id]
-                                    console_logger.info(f"Using first available tag: {forum_channel.available_tags[0].name}")
-                            
-                            # Create thread in forum channel
-                            thread = await forum_channel.create_thread(
-                                name=f"Referendum #{ref_id}: {title[:80]}" if len(title) > 80 else f"Referendum #{ref_id}: {title}",
-                                content=message,
-                                applied_tags=[discord.Object(id=tag) for tag in tags] if tags else None  # Convert tag IDs to Discord.Object instances
-                            )
-                            console_logger.info(f"Posted referendum #{ref_id} to Discord thread: {thread.thread.name}")
-                            
-                            # Mention roles if configured
-                            if config.DISCORD_NOTIFY_ROLE:
-                                role_mention = None
-                                for role in guild.roles:
-                                    if role.name == config.DISCORD_NOTIFY_ROLE:
-                                        role_mention = role
-                                        break
-                                
-                                if role_mention:
-                                    await thread.thread.send(f"{role_mention.mention} A new referendum has been posted!")
-                                    console_logger.info(f"Mentioned role {role_mention.name} in thread")
-                                else:
-                                    console_logger.warning(f"Could not find role with name {config.DISCORD_NOTIFY_ROLE}")
-                                    # Try sending a message with the role name as text
-                                    await thread.thread.send(f"@{config.DISCORD_NOTIFY_ROLE} New referendum #{ref_id} is now available for discussion!")
-                        except Exception as e:
-                            console_logger.error(f"Error posting referendum #{ref_id} to Discord: {e}")
-                            traceback.print_exc()
+                        success = await post_referendum_to_discord(ref_id, title, description, origin)
+                        if success:
+                            console_logger.info(f"Successfully posted referendum #{ref_id} to Discord")
+                        else:
+                            console_logger.error(f"Failed to post referendum #{ref_id} to Discord")
                     else:
                         console_logger.info("Skipping Discord posting (not configured)")
             else:
