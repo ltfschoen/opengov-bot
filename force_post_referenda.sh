@@ -24,8 +24,6 @@ fi
 echo "{}" > "$CACHE_FILE"
 echo "Created empty cache file at: $CACHE_FILE"
 
-# Check Discord configuration (still needed for posting)
-echo "Discord configuration:"
 echo "DISCORD_API_KEY set: $(test -n "$DISCORD_API_KEY" && echo 'Yes' || echo 'No')"
 echo "DISCORD_SERVER_ID set: $(test -n "$DISCORD_SERVER_ID" && echo 'Yes' || echo 'No')"
 echo "DISCORD_FORUM_CHANNEL_ID set: $(test -n "$DISCORD_FORUM_CHANNEL_ID" && echo 'Yes' || echo 'No')"

@@ -38,6 +38,9 @@ Join the public rooms of the JAM DAO Discord server here: https://discord.gg/cJR
   - [Installing PM2 (Process Manager)](#installing-pm2-process-manager)
     - [Daemonizing the Bot to Run 24/7 with PM2](#daemonizing-the-bot-to-run-247-with-pm2)
   - [Running Docker Version](#running-docker-version)
+  - [Setting Up Periodic Execution](#setting-up-periodic-execution)
+    - [Using Cron Jobs](#using-cron-jobs)
+    - [Manual Cron Setup](#manual-cron-setup)
 - [Features](#features)
   - [Autonomous Voting](#autonomous-voting)
     - [Vote Settings](#vote-settings)
@@ -848,6 +851,61 @@ Multi-network Docker setup includes:
 - Pre-configured entry point for multi-network support
 - Volume mounts for persistent data and network configuration
 - Integration with database services
+
+### Setting Up Periodic Execution
+
+The OpenGov Bot is designed to run periodically to check for new referenda rather than running continuously (e.g. when running the bot with `python -m bot.scripts.check_referenda`). This approach is more resilient to network issues and uses fewer resources.
+
+#### Using Cron Jobs
+
+We provide a script to easily set up a cron job that will run the bot at regular intervals:
+
+1. Make the script executable:
+   ```bash
+   chmod +x setup_cron.sh
+   ```
+
+2. Run the script (default: runs every hour):
+   ```bash
+   ./setup_cron.sh
+   ```
+
+3. To customize the frequency, use the `-f` or `--frequency` option:
+   ```bash
+   # Run every 15 minutes
+   ./setup_cron.sh -f "*/15 * * * *"
+   
+   # Run every 6 hours
+   ./setup_cron.sh -f "0 */6 * * *"
+   ```
+
+The script will:
+- Set up a cron job to run the bot at the specified interval
+- Create a logs directory for storing output
+- Configure the cron job to write logs to `logs/cron_check_referenda.log`
+
+#### Manual Cron Setup
+
+If you prefer to set up the cron job manually:
+
+1. Open your crontab for editing:
+   ```bash
+   crontab -e
+   ```
+
+2. Add a line to run the bot (adjust the path and frequency as needed):
+   ```
+   # Run every hour
+   0 * * * * cd /path/to/opengov-bot && python -m bot.scripts.check_referenda >> logs/cron_check_referenda.log 2>&1
+   ```
+
+Common cron patterns:
+- `0 * * * *` - Every hour
+- `*/15 * * * *` - Every 15 minutes
+- `0 */6 * * *` - Every 6 hours
+- `0 0 * * *` - Once a day at midnight
+
+**Note:** Ensure your environment variables are properly set in the `.env` file before setting up the cron job.
 
 ---
 
