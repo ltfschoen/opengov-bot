@@ -522,7 +522,7 @@ class DiscordFormatting:
                 items[new_key] = v
         return items
 
-    async def add_fields_to_embed(self, embed, data, parent_key=""):
+    async def add_fields_to_embed(self, embed, data, parent_key="", network_name=None):
         char_count = 0
         field_data = {}
         field_order = [
@@ -543,6 +543,9 @@ class DiscordFormatting:
         ]
 
         flat_data = await self.flatten_dict(data)
+        
+        # Use provided network_name or fall back to config
+        network = network_name if network_name else self.config.NETWORK_NAME
 
         for key, value in flat_data.items():
             if parent_key == "comments" or key in ["PROPOSAL LENGTH", "PROPOSAL HASH"]:
@@ -550,26 +553,47 @@ class DiscordFormatting:
             formatted_key = await self.format_key(key, parent_key)
 
             # Look up and add display name for specific keys
-            valid_address = await self.substrate.check_ss58_address(address=value)
-            if valid_address and len(value) < 50:
-                identity = await self.substrate.check_identity(address=value, network=self.config.NETWORK_NAME)
-                value = f"[{identity if identity else value}](https://{self.config.NETWORK_NAME}.subscan.io/account/{value})"
-
+            # Check if substrate is initialized to avoid NoneType error
+            if self.substrate is not None and value is not None and isinstance(value, str):
+                try:
+                    valid_address = await self.substrate.check_ss58_address(address=value)
+                    if valid_address and len(value) < 50:
+                        identity = await self.substrate.check_identity(address=value, network=network)
+                        value = f"[{identity if identity else value}](https://{network}.subscan.io/account/{value})"
+                except Exception as e:
+                    self.logging.error(f"Error checking SS58 address: {e}")
+            
+            # Format block links even if substrate is None
             if formatted_key == "ENDING BLOCK" and value is not None:
-                value = f"[{value[0]}](https://{self.config.NETWORK_NAME}.subscan.io/block/{value[0]})"
+                try:
+                    value = f"[{value[0]}](https://{network}.subscan.io/block/{value[0]})"
+                except (IndexError, TypeError) as e:
+                    self.logging.error(f"Error formatting ENDING BLOCK: {e}")
+                    # Keep original value if formatting fails
 
-            if formatted_key in ["CONFIRMING SINCE", "SUBMITTED"]:
-                value = f"[{value}](https://{self.config.NETWORK_NAME}.subscan.io/block/{value})"
+            if formatted_key in ["CONFIRMING SINCE", "SUBMITTED"] and value is not None:
+                try:
+                    value = f"[{value}](https://{network}.subscan.io/block/{value})"
+                except Exception as e:
+                    self.logging.error(f"Error formatting block link: {e}")
+                    # Keep original value if formatting fails
+            if "AMOUNT" in formatted_key and isinstance(value, (int, float, str)):
+                try:
+                    value = "{:,.0f}".format(int(value) / self.config.TOKEN_DECIMAL)
+                    value = f"{value} {self.config.SYMBOL}"  # Add a dollar sign before the value
+                except (ValueError, TypeError, ZeroDivisionError) as e:
+                    self.logging.error(f"Error formatting amount: {e}")
+                    value = str(value)  # Keep original value if formatting fails
 
             if formatted_key == "CONFIRMING":
                 value = "True" if isinstance(value, int) or (isinstance(value, str) and value.isdigit()) else "False"
 
             if any(keyword in formatted_key for keyword in ["AYES", "NAYS", "SUPPORT"]) and isinstance(value, (int, float, str)):
-                value = str("{:,.0f}".format(int(value) / self.config.TOKEN_DECIMAL))  # Add a dollar sign before the value
-
-            if "AMOUNT" in formatted_key and isinstance(value, (int, float, str)):
-                value = "{:,.0f}".format(int(value) / self.config.TOKEN_DECIMAL)
-                value = f"{value} {self.config.SYMBOL}"  # Add a dollar sign before the value
+                try:
+                    value = str("{:,.0f}".format(int(value) / self.config.TOKEN_DECIMAL))
+                except (ValueError, TypeError, ZeroDivisionError) as e:
+                    self.logging.error(f"Error formatting vote count: {e}")
+                    value = str(value)  # Keep original value if formatting fails
 
             # print(f"Char count: {char_count}, Key: {formatted_key}, Value: {value}")  # Debug line
 
@@ -580,7 +604,7 @@ class DiscordFormatting:
                 break
 
             if isinstance(value, dict):
-                embed = await self.add_fields_to_embed(embed, value, formatted_key)
+                embed = await self.add_fields_to_embed(embed, value, formatted_key, network_name)
             else:
                 field_data[formatted_key] = value
 

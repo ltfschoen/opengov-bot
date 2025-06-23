@@ -222,8 +222,15 @@ async def get_or_create_governance_tag(available_channel_tags, governance_origin
 
         # Create new tag
         if len(available_channel_tags) < 20:  # Discord limit
-            new_tag = await forum.create_tag(tag_name)
-            return new_tag
+            try:
+                # The error is here - forum.create_tag() takes only self as positional argument
+                # We need to use named parameters
+                new_tag = await forum.create_tag(name=tag_name)
+                return new_tag
+            except Exception as e:
+                logger.error(f"Error creating tag with name '{tag_name}': {e}")
+                # Fall back to using an existing tag
+                return available_channel_tags[0] if available_channel_tags else None
         else:
             # If we hit the tag limit, return a generic tag or the first one
             logger.warning(f"Cannot create new tag '{tag_name}', reached Discord limit")

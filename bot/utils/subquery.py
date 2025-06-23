@@ -651,26 +651,53 @@ class SubstrateAPI:
         try:
             await self.connect(self.config.SUBSTRATE_WSS)
 
-            qmap = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.substrate.query_map,
-                    module='Referenda',
-                    storage_function='ReferendumInfoFor',
-                    params=[]
-                ),
-                timeout=60
-            )
+            # Use a shorter timeout and handle reconnection if needed
+            try:
+                qmap = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.substrate.query_map,
+                        module='Referenda',
+                        storage_function='ReferendumInfoFor',
+                        params=[]
+                    ),
+                    timeout=30  # Reduced timeout to prevent blocking Discord heartbeat
+                )
+            except asyncio.TimeoutError:
+                # If timeout occurs, try to reconnect and retry once
+                self.logger.warning("Timeout during query_map, reconnecting and retrying...")
+                await self.disconnect()
+                await self.connect(self.config.SUBSTRATE_WSS)
+                
+                # Retry with even shorter timeout
+                qmap = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.substrate.query_map,
+                        module='Referenda',
+                        storage_function='ReferendumInfoFor',
+                        params=[]
+                    ),
+                    timeout=20
+                )
 
-            ongoing_referendums = [int(index.value) for index, info in qmap if 'Ongoing' in info]
+            # Process results safely
+            ongoing_referendums = []
+            for index, info in qmap:
+                try:
+                    if 'Ongoing' in info:
+                        ongoing_referendums.append(int(index.value))
+                except (ValueError, TypeError, AttributeError) as e:
+                    self.logger.error(f"Error processing referendum index {index}: {e}")
+                    continue
+                    
             return ongoing_referendums
 
         except asyncio.TimeoutError:
-            self.logger.error("Timeout while fetching ongoing referendums.")
-            raise
+            self.logger.error("Timeout while fetching ongoing referendums, returning empty list")
+            return []  # Return empty list instead of raising exception
 
         except Exception as e:
             self.logger.error(f"Error fetching ongoing referendum indexes: {e}")
-            raise
+            return []  # Return empty list instead of raising exception
 
     async def referendumInfoFor(self, index=None):
         """
@@ -722,8 +749,17 @@ class SubstrateAPI:
                 print(f"DEBUG: Processed {item_count} total items, found {len(referendum)} ongoing referenda")
                 
                 try:
+                    print(f"DEBUG: Starting JSON sorting operation")
+                    import time
+                    start_time = time.time()
                     sort = json.dumps(referendum, sort_keys=True)
+                    sort_time = time.time()
+                    print(f"DEBUG: JSON dumps completed in {(sort_time - start_time):.4f} seconds")
+                    
                     data = json.loads(sort)
+                    load_time = time.time()
+                    print(f"DEBUG: JSON loads completed in {(load_time - sort_time):.4f} seconds")
+                    print(f"DEBUG: Total JSON processing time: {(load_time - start_time):.4f} seconds")
                     return data
                 except json.JSONDecodeError as je:
                     print(f"DEBUG: JSON error during sort/load: {je}")

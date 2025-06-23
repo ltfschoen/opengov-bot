@@ -5,6 +5,7 @@ import discord
 from datetime import datetime, timezone
 from discord import Embed
 from typing import List, Dict, Any, Optional, Tuple
+import os
 
 from bot.utils.logger import Logger
 from bot.utils.data_processing import CacheManager, ProcessCallData, DiscordFormatting
@@ -49,10 +50,14 @@ class MultiNetworkGovernance:
         Check for new governance proposals across all networks and create Discord threads.
         """
         try:
+            import time
+            overall_start = time.time()
             self.logger.info("Checking for new proposals across all networks")
 
             # Check all networks in parallel
+            print(f"DEBUG: Starting check_all_referendums at {time.time() - overall_start:.4f}s")
             referendum_data = await self.handler.check_all_referendums()
+            print(f"DEBUG: Completed check_all_referendums at {time.time() - overall_start:.4f}s")
 
             # Get guild
             server_id = self.config.DISCORD_SERVER_ID
@@ -61,12 +66,14 @@ class MultiNetworkGovernance:
                 self.logger.warning("Skipping forum post creation as no valid server is configured.")
                 return
 
+            print(f"DEBUG: Starting guild retrieval at {time.time() - overall_start:.4f}s")
             guild = self.client.get_guild(server_id)
             if not guild:
                 self.logger.error(f"Guild not found with ID {server_id}")
                 self.logger.warning("Bot may not have joined the server or server ID might be incorrect.")
                 self.logger.warning("Please check your .env file and ensure the bot has been added to the server.")
                 return
+            print(f"DEBUG: Completed guild retrieval at {time.time() - overall_start:.4f}s")
 
             # Handle referenda for each network
             for network_id, (new_referendums, referendum_info_for) in referendum_data.items():
@@ -75,15 +82,21 @@ class MultiNetworkGovernance:
                     continue
 
                 self.logger.info(f"Processing {len(new_referendums)} new proposal(s) for network {network_id}")
+                print(f"DEBUG: Starting _process_network_referenda for {network_id} at {time.time() - overall_start:.4f}s")
                 await self._process_network_referenda(
                     network_id,
                     new_referendums,
                     referendum_info_for,
                     guild
                 )
+                print(f"DEBUG: Completed _process_network_referenda for {network_id} at {time.time() - overall_start:.4f}s")
 
             # Get active proposals from all networks and archive old ones
+            print(f"DEBUG: Starting _archive_inactive_proposals at {time.time() - overall_start:.4f}s")
             await self._archive_inactive_proposals()
+            print(f"DEBUG: Completed _archive_inactive_proposals at {time.time() - overall_start:.4f}s")
+            
+            print(f"DEBUG: Total check_governance time: {time.time() - overall_start:.4f}s")
 
         except Exception as error:
             self.logger.exception(f"Error in check_governance: {error}")
@@ -91,37 +104,115 @@ class MultiNetworkGovernance:
 
     async def _archive_inactive_proposals(self):
         """Archive and lock threads for proposals that are no longer active."""
+        import time
+        start_time = time.time()
         self.logger.info("Checking active proposals across networks to archive threads")
 
         try:
             # Get active proposals for all networks
+            print(f"DEBUG: Starting to get active proposals at {time.time() - start_time:.4f}s")
             active_proposals = {}
             for network_id, substrate_api in self.handler.network_apis.items():
                 try:
+                    print(f"DEBUG: Getting ongoing referendums for {network_id} at {time.time() - start_time:.4f}s")
                     ongoing_refs = await substrate_api.ongoing_referendums_idx()
+                    print(f"DEBUG: Completed ongoing referendums for {network_id} at {time.time() - start_time:.4f}s")
                     if ongoing_refs is not False:
                         active_proposals[network_id] = ongoing_refs
                 except Exception as e:
                     self.logger.error(f"Error getting active proposals for {network_id}: {e}")
+            print(f"DEBUG: Completed getting all active proposals at {time.time() - start_time:.4f}s")
 
-            # Archive old proposals
-            threads_to_lock = CacheManager.multi_network_archive(
-                json_file_path='../data/vote_counts.json',
-                active_proposals=active_proposals,
-                archive_filename='../data/archived_votes.json'
-            )
+            # Implement archiving logic directly
+            threads_to_lock = []
+            vote_counts_path = os.path.join(CacheManager.get_data_dir(), 'vote_counts.json')
+            archive_path = os.path.join(CacheManager.get_data_dir(), 'archived_votes.json')
+            
+            # Load current vote counts
+            print(f"DEBUG: Starting to load vote counts at {time.time() - start_time:.4f}s")
+            vote_counts = {}
+            if os.path.exists(vote_counts_path):
+                try:
+                    with open(vote_counts_path, 'r') as f:
+                        vote_counts = json.load(f)
+                except Exception as e:
+                    self.logger.error(f"Error loading vote counts: {e}")
+            print(f"DEBUG: Completed loading vote counts at {time.time() - start_time:.4f}s")
+            
+            # Load archived votes
+            print(f"DEBUG: Starting to load archived votes at {time.time() - start_time:.4f}s")
+            archived_votes = {}
+            if os.path.exists(archive_path):
+                try:
+                    with open(archive_path, 'r') as f:
+                        archived_votes = json.load(f)
+                except Exception as e:
+                    self.logger.error(f"Error loading archived votes: {e}")
+            print(f"DEBUG: Completed loading archived votes at {time.time() - start_time:.4f}s")
+            
+            # For each network, check which referenda are no longer active
+            print(f"DEBUG: Starting to process inactive referenda at {time.time() - start_time:.4f}s")
+            for network_id, referenda in vote_counts.copy().items():
+                # Initialize network in archived_votes if it doesn't exist
+                if network_id not in archived_votes:
+                    archived_votes[network_id] = {}
+                
+                # Get active referenda for this network
+                active_refs = active_proposals.get(network_id, [])
+                
+                # Check each referendum
+                for ref_id, ref_data in referenda.copy().items():
+                    # If referendum is no longer active, archive it
+                    if ref_id not in active_refs:
+                        self.logger.info(f"Archiving inactive referendum {ref_id} for network {network_id}")
+                        
+                        # Move to archive
+                        archived_votes[network_id][ref_id] = ref_data
+                        
+                        # Remove from vote counts
+                        if network_id in vote_counts and ref_id in vote_counts[network_id]:
+                            del vote_counts[network_id][ref_id]
+                        
+                        # Add thread to lock list if thread_id exists
+                        if 'thread_id' in ref_data:
+                            threads_to_lock.append(ref_data['thread_id'])
+            print(f"DEBUG: Completed processing inactive referenda at {time.time() - start_time:.4f}s")
+            
+            # Save updated vote counts
+            print(f"DEBUG: Starting to save vote counts at {time.time() - start_time:.4f}s")
+            try:
+                with open(vote_counts_path, 'w') as f:
+                    json.dump(vote_counts, f, indent=4)
+            except Exception as e:
+                self.logger.error(f"Error saving vote counts: {e}")
+            print(f"DEBUG: Completed saving vote counts at {time.time() - start_time:.4f}s")
+            
+            # Save updated archived votes
+            print(f"DEBUG: Starting to save archived votes at {time.time() - start_time:.4f}s")
+            try:
+                with open(archive_path, 'w') as f:
+                    json.dump(archived_votes, f, indent=4)
+            except Exception as e:
+                self.logger.error(f"Error saving archived votes: {e}")
+            print(f"DEBUG: Completed saving archived votes at {time.time() - start_time:.4f}s")
 
             if threads_to_lock:
+                print(f"DEBUG: Starting to lock {len(threads_to_lock)} threads at {time.time() - start_time:.4f}s")
                 try:
-                    await self.client.lock_threads_by_message_ids(self.config.DISCORD_SERVER_ID, threads_to_lock)
-                    self.logger.info(f"Locked {len(threads_to_lock)} threads for archived proposals")
+                    # Don't await this - let it run in the background
+                    asyncio.create_task(self.client.lock_threads_by_message_ids(
+                        self.config.DISCORD_SERVER_ID, threads_to_lock))
+                    self.logger.info(f"Started locking {len(threads_to_lock)} threads for archived proposals in the background")
                 except Exception as e:
-                    self.logger.error(f"Failed to lock threads: {e}")
+                    self.logger.error(f"Failed to start thread locking task: {e}")
+                print(f"DEBUG: Completed initiating thread locking task at {time.time() - start_time:.4f}s")
             else:
                 self.logger.info("No threads to lock")
 
         except Exception as e:
             self.logger.error(f"Error archiving inactive proposals: {e}")
+        
+        print(f"DEBUG: Total _archive_inactive_proposals time: {time.time() - start_time:.4f}s")
 
     async def _process_network_referenda(
         self,
@@ -140,6 +231,11 @@ class MultiNetworkGovernance:
             guild: Discord guild object
         """
         try:
+            # Check if new_referendums is a dictionary
+            if not isinstance(new_referendums, dict):
+                self.logger.error(f"Expected dictionary for new_referendums, got {type(new_referendums)}: {new_referendums}")
+                return
+
             # Get network configuration
             network_config = await self.network_manager.get_network(network_id)
             if not network_config:
@@ -197,45 +293,50 @@ class MultiNetworkGovernance:
             current_price: Current asset price
         """
         try:
-            # Get available tags
-            available_channel_tags = []
-            if channel is not None:
-                available_channel_tags = [tag for tag in channel.available_tags]
-            else:
-                self.logger.error(f"Channel with ID {self.config.DISCORD_FORUM_CHANNEL_ID} not found")
-                return
-
-            # Prepare title
-            title_prefix = f"[{network_name.upper()}] "
-            title_content = values['title'][:self.config.DISCORD_TITLE_MAX_LENGTH - len(title_prefix)].strip() if values['title'] is not None else "No Title"
-            title = title_prefix + title_content
-
-            self.logger.info(f"Creating thread for {network_name} referendum #{index}: {title}")
-
             # Log data source
-            if values['successful_url']:
+            if 'successful_url' in values and values['successful_url']:
                 self.logger.info(f"Getting on-chain data from: {values['successful_url']}")
             else:
-                self.logger.error(f"No context has been set on this proposal")
+                self.logger.warning(f"No context URL for {network_name} referendum #{index}, will continue with available data")
 
-            # Get governance origin
-            governance_origin = [v for i, v in values['onchain']['origin'].items()]
+            # Get governance origin with better error handling
+            governance_origin = ["Unknown"]  # Default value
+            try:
+                if 'onchain' in values and values['onchain'] and 'origin' in values['onchain']:
+                    origin_data = values['onchain']['origin']
+                    if origin_data and isinstance(origin_data, dict):
+                        governance_origin = [v for i, v in origin_data.items() if v]
+                        if not governance_origin:  # If list is empty
+                            governance_origin = ["Unknown"]
+                else:
+                    self.logger.warning(f"No governance origin found for {network_name} referendum #{index}, using default")
+            except Exception as e:
+                self.logger.warning(f"Error parsing governance origin for {network_name} referendum #{index}: {e}")
 
             # Create tag if needed
             governance_tag = await self.client.get_or_create_governance_tag(
-                available_channel_tags,
+                [tag for tag in channel.available_tags],
                 governance_origin,
                 channel,
                 network_name=network_name
             )
 
-            # Create thread
+            # Create thread with better title handling
+            title = f"Referendum #{index}"
+            if 'title' in values and values['title']:
+                title = values['title']
+            formatted_title = f"[{network_name.upper()}] {title[:self.config.DISCORD_TITLE_MAX_LENGTH - len(f'[{network_name.upper()}] ')]}"
+            
+            content = "No content available"
+            if 'content' in values and values['content']:
+                content = values['content']
+                
             new_proposal_thread = await self.client.manage_discord_thread(
                 channel=channel,
                 operation='create',
-                title=title,
+                title=formatted_title,
                 index=index,
-                content=values['content'],
+                content=content,
                 governance_tag=governance_tag,
                 message_id=None,
                 client=self.client,
@@ -249,7 +350,7 @@ class MultiNetworkGovernance:
             # Create thread data
             thread_data = {
                 "index": index,
-                "title": title,
+                "title": formatted_title,
                 "origin": governance_origin,
                 "network": network_id,
                 "aye": 0,

@@ -5,13 +5,14 @@ from discord.ui import Button, View
 
 
 class ButtonHandler(View):
-    def __init__(self, bot_instance, message_id):
+    def __init__(self, bot_instance, message_id, network_id=None):
         super().__init__(timeout=15.0)
         self.bot_instance = bot_instance
         self.message_id = message_id
+        self.network_id = network_id  # Store network_id for multi-network support
         self.add_item(Button(label="AYE", custom_id="aye_button", style=discord.ButtonStyle.green, emoji="👍"))
         self.add_item(Button(label="NAY", custom_id="nay_button", style=discord.ButtonStyle.red, emoji="👎"))
-        self.add_item(Button(label="RECUSE", custom_id="recuse_button", style=discord.ButtonStyle.primary, emoji="\u26d4"))
+        self.add_item(Button(label="RECUSE", custom_id="recuse_button", style=discord.ButtonStyle.primary, emoji="⛔"))
 
     async def set_buttons_lock_status(self, lock_status: bool):
         for item in self.children:

@@ -724,7 +724,7 @@ npm install pm2 -g
 cd opengov-bot/bot/
 
 # test before daemonizing (review log file in /data/logs/governance_bot.log)
-python3 main.py
+python3 -m main.py
 
 # daemonize
 pm2 start main.py --name polkadot_gov --interpreter python3
@@ -743,10 +743,11 @@ mkdir -p ../data
 cp utils/samples/networks.json ../data/
 
 # test before daemonizing
-python3 main_multi_network.py
+# or if not voting `USE_POLKADOT_JS=false python -m bot.main_multi_network --verbose`
+python -m bot.main_multi_network
 
 # daemonize
-pm2 start main_multi_network.py --name opengov_multi --interpreter python3
+pm2 start bot/main_multi_network.py --name opengov_multi --interpreter python3 --cwd $PWD
 pm2 save
 
 # stopping/starting & restarting pm2 process

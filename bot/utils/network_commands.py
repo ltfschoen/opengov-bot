@@ -6,8 +6,8 @@ import json
 import asyncio
 import os
 
-from utils.network_manager import NetworkManager
-from utils.logger import Logger
+from bot.utils.network_manager import NetworkManager
+from bot.utils.logger import Logger
 
 class NetworkCommands:
     """
