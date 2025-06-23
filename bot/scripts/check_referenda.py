@@ -313,122 +313,76 @@ async def main():
     test_mode = os.getenv('TEST_MODE', '').lower() == 'true'
     
     try:
-        # Get all ongoing referenda directly
-        console_logger.info("Checking for ongoing referendums...")
-        try:
-            referendum_info_for = await substrate.referendumInfoFor()
-            
-            # Display all ongoing referenda
-            if referendum_info_for:
-                ongoing_refs = []
-                for ref_id, ref_data in referendum_info_for.items():
-                    if 'Ongoing' in ref_data:
-                        ongoing_refs.append(int(ref_id))
-                
-                if ongoing_refs:
-                    ongoing_refs.sort()
-                    console_logger.info(f"Currently ongoing referendums: {ongoing_refs}")
-                    
-                    # Get details for each ongoing referendum
-                    for ref_id in ongoing_refs[:5]:  # Limit to first 5 to avoid too much output
-                        console_logger.info(f"Getting details for referendum #{ref_id}...")
-                        ref_data = await governance.fetch_referendum_data(referendum_id=ref_id, network=config.NETWORK_NAME)
-                        console_logger.info(f"Referendum #{ref_id} details:")
-                        console_logger.info(f"  Title: {ref_data.get('title', 'No title')}")
-                        console_logger.info(f"  Origin: {ref_data.get('origin', 'Unknown')}")
-                        
-                    if len(ongoing_refs) > 5:
-                        console_logger.info(f"... and {len(ongoing_refs) - 5} more referendums")
-        except Exception as e:
-            console_logger.error(f"Error getting ongoing referendums: {e}")
-            traceback.print_exc()
-        
-        # Get referenda
+        # If in test mode, use test data instead of real data
         if test_mode:
-            console_logger.info("TEST MODE ENABLED: Creating fake test referenda")
+            console_logger.info("TEST MODE ENABLED - Using test data")
             
-            # Create fake referendum for testing
-            fake_ref_id = 9999
-            fake_title = "TEST_DOT_REF"
-            fake_desc = "This is a test referendum for Polkadot created in test mode..."
-            fake_origin = "TestOrigin" # tag
+            # Create a fake referendum for testing
+            test_referendum = {
+                "1": {
+                    "title": "Test Referendum",
+                    "description": "This is a test referendum for development purposes.",
+                    "origin": "council",
+                    "status": "ongoing",
+                    "track": "root"
+                }
+            }
             
-            console_logger.info(f"Created fake Polkadot referendum #{fake_ref_id}: {fake_title}")
-            console_logger.info(f"Returning 1 fake referenda: [{fake_ref_id}]")
-            
-            # Process the fake referendum
-            console_logger.info(f"Found 1 new referendums: [{fake_ref_id}]")
-            console_logger.info(f"Referendum #{fake_ref_id}: {fake_title}")
-            console_logger.info(f"Description: {fake_desc}")
-            console_logger.info(f"Origin: {fake_origin}")
-            
-            # Post to Discord if possible
-            if config.can_post_to_discord:
-                # Wait for Discord client to be ready
-                if discord_task:
-                    console_logger.info("Waiting for Discord client to be ready...")
-                    try:
-                        # Wait for a short time to allow Discord to connect
-                        await asyncio.wait_for(discord_task, timeout=10)
-                        console_logger.info("Discord client is ready")
-                    except asyncio.TimeoutError:
-                        console_logger.warning("Timeout waiting for Discord client to be ready")
-                
-                # Post the referendum
-                success = await post_referendum_to_discord(fake_ref_id, fake_title, fake_desc, fake_origin)
-                if success:
-                    console_logger.info(f"Successfully posted referendum #{fake_ref_id} to Discord")
-                else:
-                    console_logger.error(f"Failed to post referendum #{fake_ref_id} to Discord")
-            else:
-                console_logger.warning("Discord posting is disabled due to missing configuration")
+            new_referendums = test_referendum
+            console_logger.info(f"Created test referendum: {new_referendums}")
         else:
             # Get real referenda from the network
-            new_referendums, referendum_info = await governance.check_referendums()
+            console_logger.info("Fetching ongoing referenda from blockchain...")
+            
+            # Display ongoing referenda for debugging
+            ongoing = await substrate.referendumInfoFor()
+            console_logger.info(f"Found {len(ongoing) if ongoing else 0} ongoing referenda")
+            
+            # Get new referenda
+            new_referendums = await governance.check_referendums(network_name=config.NETWORK_NAME, substrate_api=substrate)
 
-            # Add minimal debug output
-            print(f"DEBUG: referendum_info contains {len(referendum_info) if referendum_info else 0} referenda")
-            print(f"DEBUG: new_referendums: {new_referendums}")
-            print(f"DEBUG: Current working directory: {os.getcwd()}")
+        # Add minimal debug output
+        print(f"DEBUG: new_referendums: {new_referendums}")
+        print(f"DEBUG: Current working directory: {os.getcwd()}")
+        
+        # Check if the cache file exists in the correct location
+        # The CacheManager uses the data directory + filename, so we need to check both paths
+        cache_file_direct = "data/governance.cache"
+        cache_file_manager = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")), "data", "governance.cache")
+        
+        print(f"DEBUG: Cache file at {cache_file_direct} exists: {os.path.exists(cache_file_direct)}")
+        print(f"DEBUG: Cache file at {cache_file_manager} exists: {os.path.exists(cache_file_manager)}")
+        
+        if new_referendums:
+            console_logger.info(f"Found {len(new_referendums)} new referendums")
             
-            # Check if the cache file exists in the correct location
-            # The CacheManager uses the data directory + filename, so we need to check both paths
-            cache_file_direct = "data/governance.cache"
-            cache_file_manager = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")), "data", "governance.cache")
-            
-            print(f"DEBUG: Cache file at {cache_file_direct} exists: {os.path.exists(cache_file_direct)}")
-            print(f"DEBUG: Cache file at {cache_file_manager} exists: {os.path.exists(cache_file_manager)}")
-            
-            if new_referendums:
-                console_logger.info(f"Found {len(new_referendums)} new referendums")
+            # Process each referendum
+            for ref_id, ref_data in new_referendums.items():
+                title = ref_data.get('title', f"Referendum #{ref_id}")
+                description = ref_data.get('description')
+                origin = ref_data.get('origin', 'Unknown')
+                status = ref_data.get('status', 'Unknown')
                 
-                # Process each referendum
-                for ref_id, ref_data in new_referendums.items():
-                    title = ref_data.get('title', f"Referendum #{ref_id}")
-                    description = ref_data.get('description')
-                    origin = ref_data.get('origin', 'Unknown')
-                    status = ref_data.get('status', 'Unknown')
-                    
-                    console_logger.info(f"Referendum #{ref_id}: {title}")
-                    if description:
-                        console_logger.info(f"Description: {description[:100]}..." if len(description) > 100 else f"Description: {description}")
+                console_logger.info(f"Referendum #{ref_id}: {title}")
+                if description:
+                    console_logger.info(f"Description: {description[:100]}..." if len(description) > 100 else f"Description: {description}")
+                else:
+                    console_logger.info("Description: None")
+                
+                console_logger.info(f"Origin: {origin}")
+                console_logger.info(f"Status: {status}")
+                
+                # Post to Discord if possible
+                if config.can_post_to_discord:
+                    success = await post_referendum_to_discord(ref_id, title, description, origin)
+                    if success:
+                        console_logger.info(f"Successfully posted referendum #{ref_id} to Discord")
                     else:
-                        console_logger.info("Description: None")
-                    
-                    console_logger.info(f"Origin: {origin}")
-                    console_logger.info(f"Status: {status}")
-                    
-                    # Post to Discord if possible
-                    if config.can_post_to_discord:
-                        success = await post_referendum_to_discord(ref_id, title, description, origin)
-                        if success:
-                            console_logger.info(f"Successfully posted referendum #{ref_id} to Discord")
-                        else:
-                            console_logger.error(f"Failed to post referendum #{ref_id} to Discord")
-                    else:
-                        console_logger.info("Skipping Discord posting (not configured)")
-            else:
-                console_logger.info("No new referendums found")
+                        console_logger.error(f"Failed to post referendum #{ref_id} to Discord")
+                else:
+                    console_logger.info("Skipping Discord posting (not configured)")
+        else:
+            console_logger.info("No new referendums found")
     except Exception as e:
         console_logger.error(f"Error checking referenda: {e}")
         traceback.print_exc()

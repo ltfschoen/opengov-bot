@@ -120,9 +120,24 @@ class CacheManager:
 
         cached_data = CacheManager.load_data_from_cache(full_path)
 
+        # Check for items in blockchain data that don't exist in cache
+        # This handles the case where entries were manually deleted from the cache
+        missing_items = []
+        for key in data.keys():
+            if key not in cached_data:
+                missing_items.append(f"root['{key}']")
+        
         # use DeepDiff to check if any values have changed since we ran has_commission_updated().
         difference = deepdiff.DeepDiff(cached_data, data, ignore_order=True).to_json()
         result = json.loads(difference)
+        
+        # Add missing items to the dictionary_item_added list
+        if missing_items:
+            if "dictionary_item_added" not in result:
+                result["dictionary_item_added"] = []
+            result["dictionary_item_added"].extend(missing_items)
+            print(f"DEBUG: Found {len(missing_items)} items in blockchain data that were missing from cache")
+        
         if len(result) == 0:
             return {}
         else:

@@ -2,15 +2,17 @@ import asyncio
 import aiohttp
 import logging
 import os
+import re
 from bot.utils.data_processing import CacheManager
-
+from bot.utils.subquery import SubstrateAPI
+from typing import Dict
 
 class OpenGovernance2:
     def __init__(self, config, substrate=None):
         self.config = config
         self.util = CacheManager
         self.substrate = substrate
-
+        self.logger = logging.getLogger(__name__)
 
     @staticmethod
     async def fetch_referendum_data(referendum_id: int, network: str):
@@ -81,58 +83,69 @@ class OpenGovernance2:
             successful_response["successful_url"] = successful_url
             return successful_response
 
-    async def check_referendums(self):
+    async def check_referendums(self, network_name: str, substrate_api: SubstrateAPI) -> Dict:
         """
-        Check the referendums and return any new referendums as a JSON string.
+        Check for new referendums and return the new ones.
 
-        The method retrieves the information about referendums using the `referendumInfoFor` method and
-        caches the result using the `cache_difference` method from the `util` attribute of the `self` object.
-
-        If there are any new referendums, the method retrieves the on-chain and polkassembly information about
-        each new referendum and adds it to a dictionary. The dictionary is then returned as a JSON string.
+        Args:
+            network_name (str): The name of the network to check.
+            substrate_api (SubstrateAPI): The substrate API instance to use.
 
         Returns:
-            str: The new referendums as a JSON string or False if there are no new referendums.
+            Dict: A dictionary containing the new referendums.
         """
-        new_referendums = {}
-        total_found = 0
-
         try:
-            referendum_info_for = await self.substrate.referendumInfoFor()
-
             # Use just the filename, not the path with 'data/' prefix
-            # This avoids the double data directory issue
             cache_filename = 'governance.cache'
             print(f"DEBUG: Using cache filename: {cache_filename}")
+
+            # Get ongoing referendums
+            referendum_info = await substrate_api.referendumInfoFor()
             
-            results = self.util.get_cache_difference(filename=cache_filename, data=referendum_info_for)
-
-            # Debug the results from cache difference
+            # Get the data directory and full path to cache file
+            data_dir = CacheManager.get_data_dir()
+            full_path = os.path.join(data_dir, cache_filename)
+            
+            # Load the cached data directly to compare with blockchain data
+            cached_data = {}
+            if os.path.exists(full_path):
+                cached_data = CacheManager.load_data_from_cache(full_path)
+                print(f"DEBUG: Loaded {len(cached_data)} referenda from cache")
+            
+            # Dictionary to store new referendums
+            new_referendums = {}
+            
+            # First, check for items in blockchain data that don't exist in cache
+            # This handles the case where entries were manually deleted from the cache
+            for ref_id, ref_data in referendum_info.items():
+                if ref_id not in cached_data:
+                    print(f"DEBUG: Found referendum #{ref_id} in blockchain data but not in cache")
+                    new_referendums[ref_id] = ref_data
+            
+            # Now use DeepDiff to check for any other changes
+            results = CacheManager.get_cache_difference(cache_filename, referendum_info)
             print(f"DEBUG: Cache difference results: {results}")
-
-            if results:
-                for key, value in results.items():
-                    if 'added' in key:
-                        print(f"DEBUG: Found added items in key: {key}")
-                        for index in results['dictionary_item_added']:
-                            total_found = total_found + 1
-                            index = index.strip('root').replace("['", "").replace("']", "")
-                            print(f"DEBUG: Processing new referendum with index: {index}")
-                            onchain_info = referendum_info_for[index]['Ongoing']
-                            governance_platform = await self.fetch_referendum_data(referendum_id=index, network=self.config.NETWORK_NAME)
-
-                            new_referendums.update({
-                                f"{index}": governance_platform
-                            })
-
-                            new_referendums[index]['onchain'] = onchain_info
-
-                if total_found > 0:
-                    print(f"DEBUG: Saving {total_found} referenda to cache")
-                    # Use the same filename for saving
-                    self.util.save_data_to_cache(filename=cache_filename, data=referendum_info_for)
-
-            return new_referendums, referendum_info_for
+            
+            # Process the DeepDiff results
+            if results and 'dictionary_item_added' in results:
+                for item in results['dictionary_item_added']:
+                    # Extract the index from the item string (format: "root['123']")
+                    index_match = re.search(r"root\['(\d+)'\]", item)
+                    if index_match:
+                        index = index_match.group(1)
+                        # Only add if not already added from direct comparison
+                        if index not in new_referendums and index in referendum_info:
+                            new_referendums[index] = referendum_info[index]
+            
+            # Save the updated data to cache AFTER we've detected differences
+            CacheManager.save_data_to_cache(full_path, referendum_info)
+            
+            print(f"DEBUG: referendum_info contains {len(referendum_info)} referenda")
+            print(f"DEBUG: new_referendums contains {len(new_referendums)} referenda: {list(new_referendums.keys())}")
+            
+            return new_referendums
+            
         except Exception as e:
-            logging.error(f"Error checking referendums: {e}")
-            return False, None
+            self.logger.error(f"Error checking referendums: {e}")
+            print(f"ERROR:root:Error checking referendums: {e}")
+            raise
