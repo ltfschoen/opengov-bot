@@ -58,7 +58,7 @@ class MultiNetworkHandler:
                 self.network_apis[network_id] = substrate_api
                 self.network_opengov[network_id] = OpenGovernance2(substrate_config, substrate_api)
                 self.logger.info(f"Initialized connection for network: {network_id}")
-                
+
                 # Mark Polkadot.js as initialized after the first network
                 if use_polkadot_js and not polkadot_auth_initialized:
                     polkadot_auth_initialized = True
@@ -80,56 +80,56 @@ class MultiNetworkHandler:
         import time
         overall_start = time.time()
         print(f"DEBUG: Starting check_all_referendums at {time.time() - overall_start:.4f}s")
-        
+
         referendum_data = {}
         tasks = []
-        
+
         # Create tasks for each network
         for network_id, opengov in self.network_opengov.items():
             substrate_api = self.network_apis.get(network_id)
             if not substrate_api:
                 self.logger.error(f"No SubstrateAPI instance found for network {network_id}")
                 continue
-                
+
             # Get network config and extract network_name
             network_config = await self.network_manager.get_network(network_id)
             if not network_config:
                 self.logger.error(f"Could not get network config for {network_id}")
                 continue
-                
+
             network_name = network_config.get('network_name', network_id)
-                
+
             # Create a task for this network
             task = asyncio.create_task(self._check_network_referendums(network_id, network_name, opengov, substrate_api))
             tasks.append(task)
-            
+
         # Wait for all tasks to complete
         print(f"DEBUG: Waiting for {len(tasks)} network tasks at {time.time() - overall_start:.4f}s")
         results = await asyncio.gather(*tasks, return_exceptions=True)
         print(f"DEBUG: All network tasks completed at {time.time() - overall_start:.4f}s")
-        
+
         # Process results
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 self.logger.error(f"Error checking referendums for network {i}: {result}")
                 continue
-                
+
             network_id, data = result
             referendum_data[network_id] = data
-            
+
         print(f"DEBUG: Total check_all_referendums time: {time.time() - overall_start:.4f}s")
         return referendum_data
-        
+
     async def _check_network_referendums(self, network_id, network_name, opengov, substrate_api):
         """Check referendums for a single network."""
         import time
         start_time = time.time()
         print(f"DEBUG: Starting referendum check for {network_id} at {time.time() - start_time:.4f}s")
-        
+
         try:
             # Call check_referendums with the required parameters
             result = await opengov.check_referendums(network_name, substrate_api)
-            
+
             if result is None:
                 self.logger.error(f"check_referendums returned None for {network_id}")
                 print(f"DEBUG: Completed referendum check for {network_id} (None result) at {time.time() - start_time:.4f}s")
@@ -138,7 +138,7 @@ class MultiNetworkHandler:
                 # The check_referendums method only returns new_referendums, not a tuple
                 # We need to get the referendum_info separately
                 new_referendums = result
-                
+
                 # Get the full referendum info for this network
                 try:
                     print(f"DEBUG: Starting referendumInfoFor for {network_id} at {time.time() - start_time:.4f}s")
@@ -151,10 +151,10 @@ class MultiNetworkHandler:
                 except Exception as e:
                     referendum_info = {}
                     self.logger.error(f"Error getting referendum info for {network_id}: {e}")
-                
+
                 print(f"DEBUG: Completed referendum check for {network_id} at {time.time() - start_time:.4f}s")
                 return network_id, (new_referendums, referendum_info)
-                
+
         except Exception as e:
             self.logger.error(f"Error checking referendums for {network_id}: {e}")
             print(f"DEBUG: Error in referendum check for {network_id} at {time.time() - start_time:.4f}s: {e}")

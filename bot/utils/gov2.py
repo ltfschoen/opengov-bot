@@ -97,7 +97,7 @@ class OpenGovernance2:
         try:
             import time
             overall_start = time.time()
-            
+
             # Use just the filename, not the path with 'data/' prefix
             cache_filename = 'governance.cache'
             print(f"DEBUG: Using cache filename: {cache_filename}")
@@ -106,11 +106,11 @@ class OpenGovernance2:
             print(f"DEBUG: Starting referendumInfoFor() at {time.time() - overall_start:.4f}s")
             referendum_info = await substrate_api.referendumInfoFor()
             print(f"DEBUG: Completed referendumInfoFor() at {time.time() - overall_start:.4f}s")
-            
+
             # Get the data directory and full path to cache file
             data_dir = CacheManager.get_data_dir()
             full_path = os.path.join(data_dir, cache_filename)
-            
+
             # Load the cached data directly to compare with blockchain data
             print(f"DEBUG: Starting cache load at {time.time() - overall_start:.4f}s")
             cached_data = {}
@@ -118,10 +118,10 @@ class OpenGovernance2:
                 cached_data = CacheManager.load_data_from_cache(full_path)
                 print(f"DEBUG: Loaded {len(cached_data)} referenda from cache")
             print(f"DEBUG: Completed cache load at {time.time() - overall_start:.4f}s")
-            
+
             # Dictionary to store new referendums
             new_referendums = {}
-            
+
             # First, check for items in blockchain data that don't exist in cache
             # This handles the case where entries were manually deleted from the cache
             print(f"DEBUG: Starting direct comparison at {time.time() - overall_start:.4f}s")
@@ -130,13 +130,13 @@ class OpenGovernance2:
                     print(f"DEBUG: Found referendum #{ref_id} in blockchain data but not in cache")
                     new_referendums[ref_id] = ref_data
             print(f"DEBUG: Completed direct comparison at {time.time() - overall_start:.4f}s")
-            
+
             # Now use DeepDiff to check for any other changes
             print(f"DEBUG: Starting DeepDiff at {time.time() - overall_start:.4f}s")
             results = CacheManager.get_cache_difference(cache_filename, referendum_info)
             print(f"DEBUG: Cache difference results: {results}")
             print(f"DEBUG: Completed DeepDiff at {time.time() - overall_start:.4f}s")
-            
+
             # Process the DeepDiff results
             if results and 'dictionary_item_added' in results:
                 for item in results['dictionary_item_added']:
@@ -147,18 +147,18 @@ class OpenGovernance2:
                         # Only add if not already added from direct comparison
                         if index not in new_referendums and index in referendum_info:
                             new_referendums[index] = referendum_info[index]
-            
+
             # Save the updated data to cache AFTER we've detected differences
             print(f"DEBUG: Starting cache save at {time.time() - overall_start:.4f}s")
             CacheManager.save_data_to_cache(full_path, referendum_info)
             print(f"DEBUG: Completed cache save at {time.time() - overall_start:.4f}s")
-            
+
             print(f"DEBUG: referendum_info contains {len(referendum_info)} referenda")
             print(f"DEBUG: new_referendums contains {len(new_referendums)} referenda: {list(new_referendums.keys())}")
             print(f"DEBUG: Total check_referendums time: {time.time() - overall_start:.4f}s")
-            
+
             return new_referendums
-            
+
         except Exception as e:
             self.logger.error(f"Error checking referendums: {e}")
             print(f"ERROR:root:Error checking referendums: {e}")

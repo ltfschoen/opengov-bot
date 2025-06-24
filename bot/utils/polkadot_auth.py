@@ -57,7 +57,7 @@ class PolkadotAuth:
                                     try {
                                         const { web3Enable, web3Accounts, web3FromAddress } = window.polkadotExtensionDapp;
                                         const extensions = await web3Enable('OpenGov Bot');
-                                        
+
                                         if (extensions.length === 0) {
                                             throw new Error('No extension found. Please install the Polkadot.js extension.');
                                         }
@@ -69,7 +69,7 @@ class PolkadotAuth:
 
                                         const account = allAccounts[0];
                                         const injector = await web3FromAddress(account.address);
-                                        
+
                                         const accountData = {
                                             address: account.address,
                                             publicKey: account.publicKey,
@@ -88,7 +88,7 @@ class PolkadotAuth:
                                                 },
                                                 body: JSON.stringify(accountData)
                                             });
-                                            
+
                                             if (!response.ok) {
                                                 throw new Error('Failed to save account to server');
                                             }
@@ -165,9 +165,9 @@ class PolkadotAuth:
         def open_browser():
             time.sleep(1)
             webbrowser.open_new(f'http://localhost:{self.port}')
-        
+
         threading.Thread(target=open_browser).start()
-        
+
         # Start the Flask server
         self.app.run(
             host='0.0.0.0',

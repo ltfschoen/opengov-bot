@@ -109,10 +109,10 @@ class CacheManager:
         if not os.path.isfile(full_path):
             # Create directory if it doesn't exist
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
-            
+
             # Save the data to cache
             CacheManager.save_data_to_cache(full_path, data)
-            
+
             # Return all data as new on first run
             if data:
                 return {"dictionary_item_added": [f"root['{key}']" for key in data.keys()]}
@@ -126,18 +126,18 @@ class CacheManager:
         for key in data.keys():
             if key not in cached_data:
                 missing_items.append(f"root['{key}']")
-        
+
         # use DeepDiff to check if any values have changed since we ran has_commission_updated().
         difference = deepdiff.DeepDiff(cached_data, data, ignore_order=True).to_json()
         result = json.loads(difference)
-        
+
         # Add missing items to the dictionary_item_added list
         if missing_items:
             if "dictionary_item_added" not in result:
                 result["dictionary_item_added"] = []
             result["dictionary_item_added"].extend(missing_items)
             print(f"DEBUG: Found {len(missing_items)} items in blockchain data that were missing from cache")
-        
+
         if len(result) == 0:
             return {}
         else:
@@ -302,7 +302,7 @@ class ProcessCallData:
             formatted_parts.append(formatted_part)
         return ' '.join(formatted_parts)
 
-    async def find_and_collect_values(self, data, preimagehash, indent=0, path='', current_embed=None):
+    async def find_and_collect_values(self, data, preimagehash, indent=0, path='', current_embed=None, network_name=None):
         """
         Recursively traverses through the given data (list, dictionary or other data types)
         and collects certain values to be added to a list of discord Embed objects.
@@ -319,6 +319,8 @@ class ProcessCallData:
         :type path: str
         :param current_embed: The currently active Embed object, default is None
         :type current_embed: Embed or None
+        :param network_name: The name of the network for generating links
+        :type network_name: str or None
         :return: The extended list of Embed objects
         :rtype: list
         """
@@ -346,7 +348,7 @@ class ProcessCallData:
                     return current_embed
 
                 if isinstance(value, (dict, list)):
-                    await self.find_and_collect_values(value, preimagehash, indent, new_path, current_embed)
+                    await self.find_and_collect_values(value, preimagehash, indent, new_path, current_embed, network_name)
                 else:
                     value_str = str(value)
 
@@ -384,8 +386,8 @@ class ProcessCallData:
                                 current_embed.description += f"\n{'　' * (indent + 1)} **USD**: {value_str * self.price:,.0f}"
 
                         elif key in ['beneficiary', 'signed', 'curator']:
-                            display_name = await self.substrate.check_identity(address=value_str, network=self.config.NETWORK_NAME)
-                            current_embed.description += f"\n{'　' * (indent + 1)} **{self.format_key(key)[:256]}**: [{display_name}](https://{self.config.NETWORK_NAME}.subscan.io/account/{value_str})"
+                            display_name = await self.substrate.check_identity(address=value_str, network=network_name if network_name else self.config.NETWORK_NAME)
+                            current_embed.description += f"\n{'　' * (indent + 1)} **{self.format_key(key)[:256]}**: [{display_name}](https://{network_name if network_name else self.config.NETWORK_NAME}.subscan.io/account/{value_str})"
                         else:
                             current_embed.description += f"\n{'　' * (indent + 1)} **{self.format_key(key)[:256]}**: {(value_str[:253] + '...') if len(value_str) > 256 else value_str}"
                     else:
@@ -394,16 +396,16 @@ class ProcessCallData:
                     if len(current_embed.description) >= max_description_length:
                         return current_embed
 
-                    await self.find_and_collect_values(value, preimagehash, indent, new_path, current_embed)
+                    await self.find_and_collect_values(value, preimagehash, indent, new_path, current_embed, network_name)
 
         elif isinstance(data, (list, tuple)):
             for index, item in enumerate(data):
                 if len(current_embed.description) >= max_description_length:
-                    current_embed.description += (f"\n\nThe call is too large to display here. Visit [**Subscan**](https://{self.config.NETWORK_NAME}.subscan.io/preimage/{preimagehash}) for more details")
+                    current_embed.description += (f"\n\nThe call is too large to display here. Visit [**Subscan**](https://{network_name if network_name else self.config.NETWORK_NAME}.subscan.io/preimage/{preimagehash}) for more details")
                     return current_embed
 
                 new_path = f"{path}[{index}]"
-                await self.find_and_collect_values(item, preimagehash, indent, new_path, current_embed)
+                await self.find_and_collect_values(item, preimagehash, indent, new_path, current_embed, network_name)
 
         return current_embed
 
@@ -543,7 +545,7 @@ class DiscordFormatting:
         ]
 
         flat_data = await self.flatten_dict(data)
-        
+
         # Use provided network_name or fall back to config
         network = network_name if network_name else self.config.NETWORK_NAME
 
@@ -562,7 +564,7 @@ class DiscordFormatting:
                         value = f"[{identity if identity else value}](https://{network}.subscan.io/account/{value})"
                 except Exception as e:
                     self.logging.error(f"Error checking SS58 address: {e}")
-            
+
             # Format block links even if substrate is None
             if formatted_key == "ENDING BLOCK" and value is not None:
                 try:

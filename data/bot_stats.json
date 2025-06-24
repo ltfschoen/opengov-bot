@@ -1,18 +1,18 @@
 {
   "operations": {
     "update_prices": {
-      "total_runs": 65,
-      "successful_runs": 65,
-      "last_run": "2025-06-24T01:20:44.161287",
+      "total_runs": 103,
+      "successful_runs": 103,
+      "last_run": "2025-06-24T19:22:53.636102",
       "average_time_ms": 0
     },
     "check_governance": {
-      "total_runs": 28,
-      "successful_runs": 28,
-      "last_run": "2025-06-24T01:21:25.219373",
+      "total_runs": 43,
+      "successful_runs": 43,
+      "last_run": "2025-06-24T18:08:41.697868",
       "average_time_ms": 0
     }
   },
   "start_time": "2025-06-17T12:11:56.511394",
-  "last_updated": "2025-06-24T01:21:25.219402"
+  "last_updated": "2025-06-24T19:22:53.636180"
 }

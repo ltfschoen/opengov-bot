@@ -95,7 +95,7 @@ class MultiNetworkGovernance:
             print(f"DEBUG: Starting _archive_inactive_proposals at {time.time() - overall_start:.4f}s")
             await self._archive_inactive_proposals()
             print(f"DEBUG: Completed _archive_inactive_proposals at {time.time() - overall_start:.4f}s")
-            
+
             print(f"DEBUG: Total check_governance time: {time.time() - overall_start:.4f}s")
 
         except Exception as error:
@@ -127,7 +127,7 @@ class MultiNetworkGovernance:
             threads_to_lock = []
             vote_counts_path = os.path.join(CacheManager.get_data_dir(), 'vote_counts.json')
             archive_path = os.path.join(CacheManager.get_data_dir(), 'archived_votes.json')
-            
+
             # Load current vote counts
             print(f"DEBUG: Starting to load vote counts at {time.time() - start_time:.4f}s")
             vote_counts = {}
@@ -138,7 +138,7 @@ class MultiNetworkGovernance:
                 except Exception as e:
                     self.logger.error(f"Error loading vote counts: {e}")
             print(f"DEBUG: Completed loading vote counts at {time.time() - start_time:.4f}s")
-            
+
             # Load archived votes
             print(f"DEBUG: Starting to load archived votes at {time.time() - start_time:.4f}s")
             archived_votes = {}
@@ -149,35 +149,35 @@ class MultiNetworkGovernance:
                 except Exception as e:
                     self.logger.error(f"Error loading archived votes: {e}")
             print(f"DEBUG: Completed loading archived votes at {time.time() - start_time:.4f}s")
-            
+
             # For each network, check which referenda are no longer active
             print(f"DEBUG: Starting to process inactive referenda at {time.time() - start_time:.4f}s")
             for network_id, referenda in vote_counts.copy().items():
                 # Initialize network in archived_votes if it doesn't exist
                 if network_id not in archived_votes:
                     archived_votes[network_id] = {}
-                
+
                 # Get active referenda for this network
                 active_refs = active_proposals.get(network_id, [])
-                
+
                 # Check each referendum
                 for ref_id, ref_data in referenda.copy().items():
                     # If referendum is no longer active, archive it
                     if ref_id not in active_refs:
                         self.logger.info(f"Archiving inactive referendum {ref_id} for network {network_id}")
-                        
+
                         # Move to archive
                         archived_votes[network_id][ref_id] = ref_data
-                        
+
                         # Remove from vote counts
                         if network_id in vote_counts and ref_id in vote_counts[network_id]:
                             del vote_counts[network_id][ref_id]
-                        
+
                         # Add thread to lock list if thread_id exists
                         if 'thread_id' in ref_data:
                             threads_to_lock.append(ref_data['thread_id'])
             print(f"DEBUG: Completed processing inactive referenda at {time.time() - start_time:.4f}s")
-            
+
             # Save updated vote counts
             print(f"DEBUG: Starting to save vote counts at {time.time() - start_time:.4f}s")
             try:
@@ -186,7 +186,7 @@ class MultiNetworkGovernance:
             except Exception as e:
                 self.logger.error(f"Error saving vote counts: {e}")
             print(f"DEBUG: Completed saving vote counts at {time.time() - start_time:.4f}s")
-            
+
             # Save updated archived votes
             print(f"DEBUG: Starting to save archived votes at {time.time() - start_time:.4f}s")
             try:
@@ -211,7 +211,7 @@ class MultiNetworkGovernance:
 
         except Exception as e:
             self.logger.error(f"Error archiving inactive proposals: {e}")
-        
+
         print(f"DEBUG: Total _archive_inactive_proposals time: {time.time() - start_time:.4f}s")
 
     async def _process_network_referenda(
@@ -313,34 +313,105 @@ class MultiNetworkGovernance:
             except Exception as e:
                 self.logger.warning(f"Error parsing governance origin for {network_name} referendum #{index}: {e}")
 
-            # Create tag if needed
-            governance_tag = await self.client.get_or_create_governance_tag(
-                [tag for tag in channel.available_tags],
-                governance_origin,
-                channel,
-                network_name=network_name
-            )
+            # Get network tags from config
+            network_tags = []
+            network_config = await self.network_manager.get_network(network_id)
+            if network_config and 'forum_tags' in network_config and network_config['forum_tags']:
+                # Convert both tag names to lowercase for case-insensitive comparison
+                network_tag_names = [str(tag).lower() for tag in network_config['forum_tags']]
+
+                # Log available tags for debugging
+                available_tag_names = [str(t.name).lower() for t in channel.available_tags]
+                self.logger.info(f"Available tags in channel: {[t.name for t in channel.available_tags]}")
+                self.logger.info(f"Looking for tags: {network_tag_names}")
+                self.logger.info(f"Available tag names (lowercase): {available_tag_names}")
+
+                # Find matching tags
+                network_tags = []
+                for tag in channel.available_tags:
+                    if hasattr(tag, 'name') and str(tag.name).lower() in network_tag_names:
+                        network_tags.append(tag)
+
+                self.logger.info(f"Found matching network tags: {[t.name for t in network_tags] if network_tags else 'None'}")
+
+            # Only create/get governance tag if we have a valid governance_origin
+            governance_tag = None
+            if governance_origin and governance_origin != ["Unknown"]:
+                try:
+                    governance_tag = await self.client.get_or_create_governance_tag(
+                        [tag for tag in channel.available_tags],
+                        governance_origin,
+                        channel,
+                        network_name=network_name
+                    )
+                    if governance_tag:
+                        self.logger.info(f"Created/found governance tag: {governance_tag.name}")
+                    else:
+                        self.logger.warning(f"Failed to create governance tag for {network_name}")
+                except Exception as e:
+                    self.logger.error(f"Error creating governance tag: {e}")
+                    governance_tag = None
+
+            # Combine tags (network tags + governance tag if available)
+            all_tags = []
+            if network_tags:
+                all_tags.extend(network_tags)
+            if governance_tag:
+                all_tags.append(governance_tag)
+
+            # Verify all tags have valid IDs
+            valid_tags = []
+            for tag in all_tags:
+                if hasattr(tag, 'id') and tag.id is not None:
+                    valid_tags.append(tag)
+                else:
+                    self.logger.warning(f"Skipping invalid tag without ID: {tag}")
+
+            # Log the final tag list
+            self.logger.info(f"Final valid tags: {[t.name for t in valid_tags] if valid_tags else 'None'}")
 
             # Create thread with better title handling
-            title = f"Referendum #{index}"
+            base_title = f"Referendum #{index}"
             if 'title' in values and values['title']:
-                title = values['title']
-            formatted_title = f"[{network_name.upper()}] {title[:self.config.DISCORD_TITLE_MAX_LENGTH - len(f'[{network_name.upper()}] ')]}"
-            
+                base_title = values['title']
+
+            # Get origin string if available
+            origin_str = governance_origin[0] if governance_origin and governance_origin != ["Unknown"] else ""
+
+            # Format title according to requirements
+            if not network_tags:
+                # Format: [NETWORK] Origin - Title
+                if origin_str:
+                    title_prefix = f"[{network_name.upper()}] {origin_str} - "
+                else:
+                    title_prefix = f"[{network_name.upper()}] "
+
+                title = f"{title_prefix}{base_title[:self.config.DISCORD_TITLE_MAX_LENGTH - len(title_prefix)]}"
+                self.logger.warning(f"No network tags found for {network_name}, using text prefix fallback")
+            else:
+                # Format: Network Origin - Title
+                title_prefix = f"{network_name.capitalize()} "
+                if origin_str:
+                    title_prefix = f"{network_name.capitalize()} {origin_str} - "
+
+                title = f"{title_prefix}{base_title[:self.config.DISCORD_TITLE_MAX_LENGTH - len(title_prefix)]}"
+                self.logger.info(f"Using network tags: {[t.name for t in network_tags] if hasattr(network_tags[0], 'name') else network_tags}")
+
             content = "No content available"
             if 'content' in values and values['content']:
                 content = values['content']
-                
+
             new_proposal_thread = await self.client.manage_discord_thread(
                 channel=channel,
                 operation='create',
-                title=formatted_title,
+                title=title,
                 index=index,
                 content=content,
                 governance_tag=governance_tag,
                 message_id=None,
                 client=self.client,
-                network_id=network_id
+                network_id=network_id,
+                forum_tags=valid_tags if valid_tags else []  # Ensure we always pass a list, even if empty
             )
 
             if not new_proposal_thread:
@@ -350,7 +421,7 @@ class MultiNetworkGovernance:
             # Create thread data
             thread_data = {
                 "index": index,
-                "title": formatted_title,
+                "title": title,
                 "origin": governance_origin,
                 "network": network_id,
                 "aye": 0,

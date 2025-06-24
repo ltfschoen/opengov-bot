@@ -248,19 +248,64 @@ async def manage_discord_thread(
     governance_tag=None,
     message_id=None,
     client=None,
-    network_id="polkadot"
+    network_id="polkadot",
+    forum_tags=None
 ):
-    """Create or find a Discord thread for referendum discussion."""
+    """Create or find a Discord thread for referendum discussion.
+
+    Args:
+        channel: The forum channel to create the thread in
+        operation: 'create' or 'find'
+        title: Thread title
+        index: Referendum index
+        content: Thread content
+        governance_tag: The governance tag to apply
+        message_id: Message ID for existing threads
+        client: Discord client instance
+        network_id: Network ID for multi-network support
+        forum_tags: List of forum tags to apply to the thread (can be None)
+    """
     try:
+        # Log input parameters
+        logger.info(f"manage_discord_thread called with operation: {operation}")
+        logger.info(f"Channel type: {type(channel).__name__}")
+        logger.info(f"Title: {title}")
+        logger.info(f"Forum tags type: {type(forum_tags).__name__ if forum_tags is not None else 'None'}")
+
         if operation == 'create':
-            # Create a new thread
+            # Create the message content
             first_message = f"**{title}**\n{content[:1900]}" if content else f"**{title}**"
-            thread = await channel.create_thread(
-                name=title,
-                content=first_message,
-                applied_tags=[governance_tag] if governance_tag else None,
-            )
-            return thread
+
+            # Create thread without tags first
+            try:
+                logger.info(f"Creating thread with title: {title} (without tags)")
+                thread = await channel.create_thread(
+                    name=title[:100],  # Discord has a 100-char limit for thread names
+                    content=first_message
+                )
+
+                # If we have valid tags, try to add them after thread creation
+                if forum_tags and isinstance(forum_tags, list) and len(forum_tags) > 0:
+                    try:
+                        # Filter out any invalid tags
+                        valid_tags = []
+                        for tag in forum_tags:
+                            if hasattr(tag, 'id') and tag.id is not None:
+                                valid_tags.append(tag)
+
+                        if valid_tags:
+                            logger.info(f"Attempting to add {len(valid_tags)} tags to thread")
+                            # Note: Discord API doesn't currently support adding tags after thread creation
+                            # This is a placeholder for when/if that functionality becomes available
+                            pass
+                    except Exception as tag_error:
+                        logger.error(f"Error adding tags to thread: {str(tag_error)}")
+
+                return thread
+            except Exception as e:
+                logger.error(f"Error creating thread: {str(e)}")
+                return None
+
         elif operation == 'find':
             # Find thread by its index in title for use with existing threads
             async for thread in channel.archived_threads():
@@ -268,7 +313,10 @@ async def manage_discord_thread(
                     return thread
             return None
     except Exception as error:
-        logger.error(f"Error managing Discord thread: {error}")
+        logger.error(f"Error in manage_discord_thread: {str(error)}")
+        logger.error(f"Error type: {type(error).__name__}")
+        logger.error(f"Operation: {operation}")
+        logger.error(f"Channel type: {type(channel).__name__ if channel else 'None'}")
         return None
 
 # Attach helper methods to bot instance

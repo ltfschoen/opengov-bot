@@ -6,7 +6,7 @@
         "token_decimal": 10,
         "substrate_wss": "wss://rpc.polkadot.io",
         "people_wss": "wss://polkadot-people-rpc.polkadot.io",
-        "forum_tags": []
+        "forum_tags": ["polkadot"]
     },
     "kusama": {
         "enabled": true,
@@ -15,6 +15,6 @@
         "token_decimal": 12,
         "substrate_wss": "wss://kusama-rpc.polkadot.io",
         "people_wss": "wss://kusama-people-rpc.polkadot.io",
-        "forum_tags": []
+        "forum_tags": ["kusama"]
     }
 }

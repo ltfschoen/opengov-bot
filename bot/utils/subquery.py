@@ -667,7 +667,7 @@ class SubstrateAPI:
                 self.logger.warning("Timeout during query_map, reconnecting and retrying...")
                 await self.disconnect()
                 await self.connect(self.config.SUBSTRATE_WSS)
-                
+
                 # Retry with even shorter timeout
                 qmap = await asyncio.wait_for(
                     asyncio.to_thread(
@@ -688,7 +688,7 @@ class SubstrateAPI:
                 except (ValueError, TypeError, AttributeError) as e:
                     self.logger.error(f"Error processing referendum index {index}: {e}")
                     continue
-                    
+
             return ongoing_referendums
 
         except asyncio.TimeoutError:
@@ -739,15 +739,15 @@ class SubstrateAPI:
                 )
                 # QueryMapResult doesn't support len() directly, so we can't use len(qmap)
                 print(f"DEBUG: Received query_map response, processing items...")
-                
+
                 item_count = 0
                 for index, info in qmap:
                     item_count += 1
                     if 'Ongoing' in info:
                         referendum.update({int(index.value): info.value})
-                
+
                 print(f"DEBUG: Processed {item_count} total items, found {len(referendum)} ongoing referenda")
-                
+
                 try:
                     print(f"DEBUG: Starting JSON sorting operation")
                     import time
@@ -755,7 +755,7 @@ class SubstrateAPI:
                     sort = json.dumps(referendum, sort_keys=True)
                     sort_time = time.time()
                     print(f"DEBUG: JSON dumps completed in {(sort_time - start_time):.4f} seconds")
-                    
+
                     data = json.loads(sort)
                     load_time = time.time()
                     print(f"DEBUG: JSON loads completed in {(load_time - sort_time):.4f} seconds")
@@ -776,11 +776,11 @@ class SubstrateAPI:
             self.logger.error(f"Error fetching referendum info: {e}")
             print(f"DEBUG: Exception type: {type(e).__name__}")
             print(f"DEBUG: Exception details: {str(e)}")
-            
+
             # Check if substrate connection is still valid
             if self.substrate:
                 print(f"DEBUG: Substrate connection status: {self.substrate.websocket.connected}")
-            
+
             raise e
 
     async def referendum_call_data(self, index: int, gov1: bool, call_data: bool):

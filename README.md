@@ -366,8 +366,8 @@ The bot requires a Forum channel (not a regular Text channel) to post referenda:
    - **Post Guidelines**: "Bot will be posting new referendas here"
    - **Tags**: Create the following tags (these match the governance tracks):
      ```
-     MediumSpender, BigSpender, Root, SmallSpender, WhitelistedCaller, 
-     Treasurer, BigTipper, SmallTipper, GeneralAdmin, ReferendumCanceller, 
+     MediumSpender, BigSpender, Root, SmallSpender, WhitelistedCaller,
+     Treasurer, BigTipper, SmallTipper, GeneralAdmin, ReferendumCanceller,
      WishForChange, ReferendumKiller
      ```
 5. Set appropriate permissions for the channel
@@ -875,7 +875,7 @@ We provide a script to easily set up a cron job that will run the bot at regular
    ```bash
    # Run every 15 minutes
    ./setup_cron.sh -f "*/15 * * * *"
-   
+
    # Run every 6 hours
    ./setup_cron.sh -f "0 */6 * * *"
    ```
